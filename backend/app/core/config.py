@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     postgres_user: str = "handball"
     postgres_password: str = "handball_dev_password"
     postgres_port: int = 5433
+    session_cookie_name: str = "handball_session"
+    session_max_age_seconds: int = 60 * 60 * 24 * 7
+    session_cookie_secure: bool = False
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",

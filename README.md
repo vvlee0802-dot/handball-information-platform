@@ -1,6 +1,6 @@
 # Handball Information Platform
 
-手球信息与比赛分析平台。目前已完成 Epic 1 页面基线，以及 Epic 2 的 US2.1 业务数据接入。
+手球信息与比赛分析平台。目前已完成 Epic 1 页面基线，以及 Epic 2 的 US2.1 业务数据接入和 US2.2 登录会话。
 
 用户可以通过赛事、比赛、球队、球员或场馆查找信息。主要页面的数据现由 FastAPI 从 PostgreSQL 读取，不再只依赖浏览器中的静态内容。录像上传、AI 事件识别、视频审核和自动剪辑仍属于后续开发范围。
 
@@ -10,6 +10,13 @@
 2. 建立 PostgreSQL、SQLAlchemy 和 Alembic 数据层，实现赛事、球队、球员、场馆和比赛的数据持久化与迁移。
 3. 实现基础数据的新增、列表、详情和编辑接口，并加入外键存在性、主客队差异及完赛比分完整性校验。
 4. 将主要页面从前端静态数据切换为真实 API 数据，补充关联展示、错误状态和前后端自动化测试，并用 v1.0 需求文档替换旧版需求。
+
+## US2.2 本版改动
+
+1. 新增用户与服务端会话数据模型，使用 Alembic 管理数据库迁移。
+2. 使用 `scrypt` 保存密码哈希，使用随机会话令牌和 HttpOnly Cookie 保持登录状态。
+3. 新增登录、当前用户和退出接口，并要求登录后才能调用基础数据写接口。
+4. 新增 Vue 登录页、会话恢复、退出和 401 重新登录引导，并补充前后端测试。
 
 ## 需求文档
 
@@ -37,6 +44,8 @@
 - `Player`：球员，通过 `team_id` 关联球队
 - `Venue`：场馆
 - `Match`：比赛，通过外键关联赛事、主队、客队和场馆
+- `User`：注册用户，只保存密码哈希，不保存明文密码
+- `AuthSession`：服务端会话，只保存随机会话令牌的摘要
 
 所有实体均使用稳定 ID 建立关系，避免使用显示名称作为数据关联依据。
 
@@ -68,8 +77,11 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python -m alembic upgrade head
+python -m app.scripts.create_user --email coach@example.com --name "王教练"
 python -m uvicorn app.main:app --reload --port 8000
 ```
+
+创建用户时终端会要求输入并确认密码。密码不会显示，也不会写入命令历史。
 
 健康检查：`http://127.0.0.1:8000/api/health`
 
@@ -102,8 +114,8 @@ python -m pytest -q
 ```text
 ESLint                         Passed
 TypeScript type-check          Passed
-Frontend unit tests            15 passed
-Backend tests                  12 passed
+Frontend unit tests            19 passed
+Backend tests                  17 passed
 Production build               Passed
 ```
 
@@ -122,34 +134,31 @@ Production build               Passed
 - [x] Vue 页面 TypeScript 统一
 - [x] 基础自动化测试
 
-### Epic 2 Match Video Management
+### Epic 2 Platform Backend Data Persistence and Accounts
 
 - [x] US2.1 基础业务数据后端化与持久化
+- [x] US2.2 登录平台并保持会话
+- [ ] US2.3 用户角色和权限
+
+### Epic 3 Match Video Management
+
 - [ ] MP4 视频上传
 - [ ] 视频与比赛记录关联
 - [ ] 上传进度和错误状态
 - [ ] 视频处理状态管理
 
-### Epic 3 AI Match Event Detection
+### Epic 4 Event Review and Video Clips
+
+- [ ] 人工新增、删除和调整事件
+- [ ] 事件筛选和视频跳转
+- [ ] 生成与导出事件片段
+
+### Epic 5 AI Match Event Detection
 
 - [ ] 自动检测进球事件
 - [ ] 保存事件时间戳
 - [ ] 保存 AI 置信度和检测来源
 - [ ] 从事件跳转到对应视频时间
-
-### Epic 4 Event Review and Match Analysis
-
-- [ ] 事件类型筛选
-- [ ] 人工新增事件
-- [ ] 删除误识别事件
-- [ ] 调整事件时间点
-- [ ] 事件统计
-
-### Epic 5 Video Clip and Export
-
-- [ ] 自动生成事件片段
-- [ ] 单个片段导出
-- [ ] 批量导出进球片段
 
 ### Epic 6 Player Analysis and Personal Highlights
 
@@ -158,11 +167,21 @@ Production build               Passed
 - [ ] 从统计指标查看对应视频
 - [ ] 自动生成个人集锦
 
+### Epic 7 to Epic 9 LLM RAG and Agent
+
+- [ ] AI 赛后报告
+- [ ] RAG 手球知识库
+- [ ] 比赛分析 Agent
+
+### Epic 10 Engineering Delivery
+
+- [ ] 自动化测试、容器化、安全、日志和可观察性
+
 ## 当前范围说明
 
 当前版本中的“上传录像”和“查看分析”页面用于建立完整的产品导航流程。
 
-这些页面暂时只显示功能边界说明，不执行真实文件上传、视频处理或 AI 分析。对应能力将在 Epic 2 至 Epic 5 中逐步实现。
+这些页面暂时只显示功能边界说明，不执行真实文件上传、视频处理或 AI 分析。对应能力将在 Epic 3 至 Epic 9 中逐步实现。
 
 ## License
 

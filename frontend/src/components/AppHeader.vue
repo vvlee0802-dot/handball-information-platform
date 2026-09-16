@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
+
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
+const router = useRouter()
+
+const handleLogout = async () => {
+  await authStore.logout()
+  await router.push('/')
+}
 </script>
 
 <template>
@@ -12,13 +22,24 @@ import { RouterLink } from 'vue-router'
       </span>
     </RouterLink>
 
-    <nav class="primary-nav" aria-label="主导航">
-      <RouterLink to="/competitions">赛事</RouterLink>
-      <RouterLink to="/matches">比赛</RouterLink>
-      <RouterLink to="/teams">球队</RouterLink>
-      <RouterLink to="/players">球员</RouterLink>
-      <RouterLink to="/venues">场馆</RouterLink>
-    </nav>
+    <div class="header-actions">
+      <nav class="primary-nav" aria-label="主导航">
+        <RouterLink to="/competitions">赛事</RouterLink>
+        <RouterLink to="/matches">比赛</RouterLink>
+        <RouterLink to="/teams">球队</RouterLink>
+        <RouterLink to="/players">球员</RouterLink>
+        <RouterLink to="/venues">场馆</RouterLink>
+      </nav>
+
+      <div class="account-area">
+        <span v-if="!authStore.initialized" class="session-status">检查会话…</span>
+        <template v-else-if="authStore.user">
+          <span class="user-name" :title="authStore.user.email">{{ authStore.user.display_name }}</span>
+          <button class="account-button" type="button" @click="handleLogout">退出</button>
+        </template>
+        <RouterLink v-else class="account-button login-link" to="/login">登录</RouterLink>
+      </div>
+    </div>
   </header>
 </template>
 
@@ -69,6 +90,31 @@ import { RouterLink } from 'vue-router'
   gap: 6px;
 }
 
+.header-actions,
+.account-area {
+  display: flex;
+  align-items: center;
+}
+
+.header-actions { gap: 18px; }
+.account-area { gap: 9px; padding-left: 16px; border-left: 1px solid var(--border); }
+.session-status { color: var(--muted); font-size: 12px; }
+.user-name { max-width: 120px; overflow: hidden; font-size: 13px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
+.account-button {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--muted-strong);
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.account-button:hover { border-color: #bcc6d8; background: var(--surface-soft); }
+.login-link { display: inline-flex; align-items: center; color: var(--primary-dark); }
+
 .primary-nav a {
   padding: 9px 13px;
   border-radius: 10px;
@@ -84,9 +130,16 @@ import { RouterLink } from 'vue-router'
 }
 
 @media (max-width: 760px) {
-  .app-header { align-items: flex-start; padding: 14px 20px; }
+  .app-header { flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 20px; }
   .brand small { display: none; }
-  .primary-nav { max-width: 64vw; overflow-x: auto; }
+  .header-actions {
+    width: 100%;
+    max-width: none;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .primary-nav { max-width: calc(100% - 62px); overflow-x: auto; }
   .primary-nav a { padding: 8px 10px; white-space: nowrap; }
+  .account-area { border-left: 0; padding-left: 0; }
 }
 </style>

@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.auth import CurrentUser
 from app.db.session import get_db
 from app.repositories import venue as venue_repository
 from app.schemas.venue import VenueCreate, VenueRead, VenueUpdate
@@ -18,7 +19,11 @@ def list_venues(db: DatabaseSession) -> list[VenueRead]:
 
 
 @router.post("", response_model=VenueRead, status_code=status.HTTP_201_CREATED)
-def create_venue(venue_data: VenueCreate, db: DatabaseSession) -> VenueRead:
+def create_venue(
+    venue_data: VenueCreate,
+    db: DatabaseSession,
+    _current_user: CurrentUser,
+) -> VenueRead:
     return venue_repository.create_venue(db, venue_data)
 
 
@@ -35,6 +40,7 @@ def update_venue(
     venue_id: int,
     venue_data: VenueUpdate,
     db: DatabaseSession,
+    _current_user: CurrentUser,
 ) -> VenueRead:
     venue = venue_repository.get_venue(db, venue_id)
     if venue is None:

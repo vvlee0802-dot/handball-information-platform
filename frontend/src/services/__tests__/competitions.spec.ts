@@ -34,6 +34,7 @@ describe('competitions service', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/competitions', {
       method: 'POST',
       body: JSON.stringify(input),
+      credentials: 'include',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
@@ -89,6 +90,7 @@ describe('competitions service', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/competitions/7', {
       method: 'PATCH',
       body: JSON.stringify(update),
+      credentials: 'include',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',

@@ -20,16 +20,44 @@ const readErrorMessage = async (response: Response) => {
   }
 }
 
-export const apiRequest = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+type ApiRequestOptions = RequestInit & {
+  redirectOnUnauthorized?: boolean
+}
+
+export const apiRequest = async <T>(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<T> => {
+  const { redirectOnUnauthorized = true, ...fetchOptions } = options
   const response = await fetch(path, {
-    ...options,
+    ...fetchOptions,
+    credentials: 'include',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
+      ...fetchOptions.headers,
     },
   })
 
-  if (!response.ok) throw new Error(await readErrorMessage(response))
+  if (!response.ok) {
+    const message = await readErrorMessage(response)
+    if (response.status === 401 && redirectOnUnauthorized && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+    }
+    throw new ApiError(message, response.status)
+  }
+
+  if (response.status === 204) return undefined as T
 
   return response.json() as Promise<T>
 }

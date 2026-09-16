@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.auth import CurrentUser
 from app.db.session import get_db
 from app.repositories import competition as competition_repository
 from app.schemas.competition import (
@@ -25,6 +26,7 @@ def list_competitions(db: DatabaseSession) -> list[CompetitionRead]:
 def create_competition(
     competition_data: CompetitionCreate,
     db: DatabaseSession,
+    _current_user: CurrentUser,
 ) -> CompetitionRead:
     return competition_repository.create_competition(db, competition_data)
 
@@ -45,6 +47,7 @@ def update_competition(
     competition_id: int,
     competition_data: CompetitionUpdate,
     db: DatabaseSession,
+    _current_user: CurrentUser,
 ) -> CompetitionRead:
     competition = competition_repository.get_competition(db, competition_id)
     if competition is None:

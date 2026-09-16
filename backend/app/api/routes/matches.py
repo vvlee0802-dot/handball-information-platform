@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.auth import CurrentUser
 from app.db.session import get_db
 from app.repositories import competition as competitions
 from app.repositories import match as matches
@@ -33,7 +34,11 @@ def list_matches(db: DatabaseSession) -> list[MatchRead]:
 
 
 @router.post("", response_model=MatchRead, status_code=status.HTTP_201_CREATED)
-def create_match(data: MatchCreate, db: DatabaseSession) -> MatchRead:
+def create_match(
+    data: MatchCreate,
+    db: DatabaseSession,
+    _current_user: CurrentUser,
+) -> MatchRead:
     validate_references(db, data)
     return matches.create_match(db, data)
 
@@ -46,7 +51,12 @@ def get_match(match_id: int, db: DatabaseSession) -> MatchRead:
 
 
 @router.patch("/{match_id}", response_model=MatchRead)
-def update_match(match_id: int, data: MatchUpdate, db: DatabaseSession) -> MatchRead:
+def update_match(
+    match_id: int,
+    data: MatchUpdate,
+    db: DatabaseSession,
+    _current_user: CurrentUser,
+) -> MatchRead:
     match = matches.get_match(db, match_id)
     if match is None: raise HTTPException(status_code=404, detail="Match not found")
     merged = MatchCreate.model_validate({
