@@ -1,0 +1,23 @@
+name: handball-platform
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: handball-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-handball}
+      POSTGRES_USER: ${POSTGRES_USER:-handball}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-handball_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - handball_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-handball} -d ${POSTGRES_DB:-handball}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  handball_postgres_data:

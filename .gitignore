@@ -8,11 +8,20 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.vite
 .DS_Store
 dist
 dist-ssr
 coverage
 *.local
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.env
+backend/uploads/
 
 # Editor directories and files
 .vscode/*
