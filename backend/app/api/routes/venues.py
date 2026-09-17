@@ -46,3 +46,20 @@ def update_venue(
     if venue is None:
         raise HTTPException(status_code=404, detail="Venue not found")
     return venue_repository.update_venue(db, venue, venue_data)
+
+
+@router.delete("/{venue_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_venue(
+    venue_id: int,
+    db: DatabaseSession,
+    _current_user: ManageCompetitionDataUser,
+) -> None:
+    venue = venue_repository.get_venue(db, venue_id)
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+    if venue_repository.has_matches(db, venue_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该场馆仍有关联比赛，请先删除相关比赛。",
+        )
+    venue_repository.delete_venue(db, venue)

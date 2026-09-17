@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
 import NotFoundPanel from '@/components/NotFoundPanel.vue'
 import { listCompetitions, type CompetitionRecord } from '@/services/competitions'
 import {
+  deleteMatch,
   getMatch,
   matchStatusLabels,
   updateMatch,
@@ -32,15 +33,18 @@ import {
 
 const authStore = useAuthStore()
 const route = useRoute()
+const router = useRouter()
 const match = ref<MatchRecord | null>(null)
 const competitions = ref<CompetitionRecord[]>([])
 const teams = ref<TeamRecord[]>([])
 const venues = ref<VenueRecord[]>([])
 const loading = ref(true),
   editing = ref(false),
-  saving = ref(false)
+  saving = ref(false),
+  deletingMatch = ref(false)
 const error = ref(''),
-  message = ref('')
+  message = ref(''),
+  deleteError = ref('')
 const videos = ref<VideoRecord[]>([])
 const uploadPolicy = ref<VideoUploadPolicy | null>(null)
 const selectedVideo = ref<File | null>(null)
@@ -153,6 +157,22 @@ const save = async () => {
     error.value = e instanceof Error ? e.message : '保存失败'
   } finally {
     saving.value = false
+  }
+}
+
+const removeMatch = async () => {
+  if (!match.value) return
+  const label = `${home.value?.name ?? '主队'} vs ${away.value?.name ?? '客队'}`
+  if (!window.confirm(`确定删除比赛“${label}”吗？删除后无法恢复。`)) return
+  deleteError.value = ''
+  deletingMatch.value = true
+  try {
+    await deleteMatch(match.value.id)
+    await router.push({ name: 'matches' })
+  } catch (e) {
+    deleteError.value = e instanceof Error ? e.message : '比赛删除失败'
+  } finally {
+    deletingMatch.value = false
   }
 }
 
@@ -330,8 +350,19 @@ onUnmounted(() => {
             >
               编辑比赛
             </button>
+            <button
+              v-if="!editing && authStore.hasPermission('manage_competition_data')"
+              class="button button-danger"
+              type="button"
+              :disabled="deletingMatch"
+              @click="removeMatch"
+            >
+              {{ deletingMatch ? '删除中…' : '删除比赛' }}
+            </button>
           </div>
         </div>
+
+        <p v-if="!editing && deleteError" class="error">删除失败：{{ deleteError }}</p>
 
         <form v-if="editing" class="edit-form" @submit.prevent="save">
           <div class="filter-grid">

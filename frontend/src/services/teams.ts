@@ -41,3 +41,5 @@ export const updateTeam = (teamId: number, input: TeamUpdate) =>
     method: 'PATCH',
     body: JSON.stringify(input),
   })
+export const deleteTeam = (teamId: number) =>
+  apiRequest<void>(`/api/teams/${teamId}`, { method: 'DELETE' })

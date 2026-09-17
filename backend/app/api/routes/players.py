@@ -61,3 +61,15 @@ def update_player(
     if player_data.team_id is not None:
         ensure_team_exists(db, player_data.team_id)
     return player_repository.update_player(db, player, player_data)
+
+
+@router.delete("/{player_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_player(
+    player_id: int,
+    db: DatabaseSession,
+    _current_user: ManageCompetitionDataUser,
+) -> None:
+    player = player_repository.get_player(db, player_id)
+    if player is None:
+        raise HTTPException(status_code=404, detail="Player not found")
+    player_repository.delete_player(db, player)

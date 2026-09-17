@@ -43,3 +43,6 @@ export const updateCompetition = (competitionId: number, input: CompetitionUpdat
     method: 'PATCH',
     body: JSON.stringify(input),
   })
+
+export const deleteCompetition = (competitionId: number) =>
+  apiRequest<void>(`/api/competitions/${competitionId}`, { method: 'DELETE' })

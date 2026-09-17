@@ -46,3 +46,20 @@ def update_team(
     if team is None:
         raise HTTPException(status_code=404, detail="Team not found")
     return team_repository.update_team(db, team, team_data)
+
+
+@router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_team(
+    team_id: int,
+    db: DatabaseSession,
+    _current_user: ManageCompetitionDataUser,
+) -> None:
+    team = team_repository.get_team(db, team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="Team not found")
+    if team_repository.has_players_or_matches(db, team_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该球队仍有关联球员或比赛，请先删除相关数据。",
+        )
+    team_repository.delete_team(db, team)

@@ -1,19 +1,27 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
 import NotFoundPanel from '@/components/NotFoundPanel.vue'
-import { getPlayer, updatePlayer, type PlayerInput, type PlayerRecord } from '@/services/players'
+import {
+  deletePlayer,
+  getPlayer,
+  updatePlayer,
+  type PlayerInput,
+  type PlayerRecord,
+} from '@/services/players'
 import { listTeams, type TeamRecord } from '@/services/teams'
 
 const authStore = useAuthStore()
 const route = useRoute()
+const router = useRouter()
 const player = ref<PlayerRecord | null>(null)
 const teams = ref<TeamRecord[]>([])
 const isLoading = ref(true)
 const isEditing = ref(false)
 const isSaving = ref(false)
+const isDeleting = ref(false)
 const saveError = ref('')
 const saveMessage = ref('')
 const editForm = reactive<PlayerInput>({
@@ -89,6 +97,21 @@ const handleUpdate = async () => {
   }
 }
 
+const handleDelete = async () => {
+  if (!player.value) return
+  if (!window.confirm(`确定删除球员“${player.value.name}”吗？删除后无法恢复。`)) return
+  saveError.value = ''
+  isDeleting.value = true
+  try {
+    await deletePlayer(player.value.id)
+    await router.push({ name: 'players' })
+  } catch (error) {
+    saveError.value = error instanceof Error ? error.message : '球员删除失败'
+  } finally {
+    isDeleting.value = false
+  }
+}
+
 onMounted(loadData)
 </script>
 
@@ -117,8 +140,21 @@ onMounted(loadData)
               >
                 编辑球员
               </button>
+              <button
+                v-if="!isEditing && authStore.hasPermission('manage_competition_data')"
+                class="button button-danger"
+                type="button"
+                :disabled="isDeleting"
+                @click="handleDelete"
+              >
+                {{ isDeleting ? '删除中…' : '删除球员' }}
+              </button>
             </div>
           </div>
+
+          <p v-if="!isEditing && saveError" class="form-message form-message-error">
+            删除失败：{{ saveError }}
+          </p>
 
           <form v-if="isEditing" class="edit-form" @submit.prevent="handleUpdate">
             <div class="filter-grid">

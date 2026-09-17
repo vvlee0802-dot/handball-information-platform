@@ -32,3 +32,5 @@ export const updateVenue = (venueId: number, input: VenueUpdate) =>
     method: 'PATCH',
     body: JSON.stringify(input),
   })
+export const deleteVenue = (venueId: number) =>
+  apiRequest<void>(`/api/venues/${venueId}`, { method: 'DELETE' })

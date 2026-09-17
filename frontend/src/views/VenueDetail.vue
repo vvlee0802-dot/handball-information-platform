@@ -1,21 +1,29 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
 import ApiMatchTable from '@/components/ApiMatchTable.vue'
 import NotFoundPanel from '@/components/NotFoundPanel.vue'
-import { getVenue, updateVenue, type VenueInput, type VenueRecord } from '@/services/venues'
+import {
+  deleteVenue,
+  getVenue,
+  updateVenue,
+  type VenueInput,
+  type VenueRecord,
+} from '@/services/venues'
 import { listMatches, type MatchRecord } from '@/services/matches'
 import { listCompetitions, type CompetitionRecord } from '@/services/competitions'
 import { listTeams, type TeamRecord } from '@/services/teams'
 
 const authStore = useAuthStore()
 const route = useRoute()
+const router = useRouter()
 const venue = ref<VenueRecord | null>(null)
 const isLoading = ref(true)
 const isEditing = ref(false)
 const isSaving = ref(false)
+const isDeleting = ref(false)
 const saveError = ref('')
 const saveMessage = ref('')
 const editForm = reactive<VenueInput>({
@@ -98,6 +106,21 @@ const handleUpdate = async () => {
   }
 }
 
+const handleDelete = async () => {
+  if (!venue.value) return
+  if (!window.confirm(`确定删除场馆“${venue.value.name}”吗？删除后无法恢复。`)) return
+  saveError.value = ''
+  isDeleting.value = true
+  try {
+    await deleteVenue(venue.value.id)
+    await router.push({ name: 'venues' })
+  } catch (error) {
+    saveError.value = error instanceof Error ? error.message : '场馆删除失败'
+  } finally {
+    isDeleting.value = false
+  }
+}
+
 onMounted(loadVenue)
 </script>
 
@@ -126,8 +149,21 @@ onMounted(loadVenue)
               >
                 编辑场馆
               </button>
+              <button
+                v-if="!isEditing && authStore.hasPermission('manage_competition_data')"
+                class="button button-danger"
+                type="button"
+                :disabled="isDeleting"
+                @click="handleDelete"
+              >
+                {{ isDeleting ? '删除中…' : '删除场馆' }}
+              </button>
             </div>
           </div>
+
+          <p v-if="!isEditing && saveError" class="form-message form-message-error">
+            删除失败：{{ saveError }}
+          </p>
 
           <form v-if="isEditing" class="edit-form" @submit.prevent="handleUpdate">
             <div class="filter-grid">

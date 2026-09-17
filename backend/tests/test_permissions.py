@@ -70,6 +70,10 @@ def test_athlete_cannot_bypass_hidden_write_controls(
     assert response.status_code == 403
     assert response.json() == {"detail": "Insufficient permissions"}
 
+    delete_response = athlete_client.delete("/api/competitions/1")
+    assert delete_response.status_code == 403
+    assert delete_response.json() == {"detail": "Insufficient permissions"}
+
 
 def test_configurable_grant_allows_coach_to_manage_competition_data() -> None:
     user = create_user(

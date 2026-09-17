@@ -69,3 +69,20 @@ def update_match(
     })
     validate_references(db, merged)
     return matches.update_match(db, match, data)
+
+
+@router.delete("/{match_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_match(
+    match_id: int,
+    db: DatabaseSession,
+    _current_user: ManageCompetitionDataUser,
+) -> None:
+    match = matches.get_match(db, match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found")
+    if matches.has_active_video_data(db, match_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该比赛仍有关联视频或未完成上传，请先处理相关视频。",
+        )
+    matches.delete_match(db, match)

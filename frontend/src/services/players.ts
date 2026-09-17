@@ -40,3 +40,6 @@ export const updatePlayer = (playerId: number, input: PlayerUpdate) =>
     method: 'PATCH',
     body: JSON.stringify(input),
   })
+
+export const deletePlayer = (playerId: number) =>
+  apiRequest<void>(`/api/players/${playerId}`, { method: 'DELETE' })

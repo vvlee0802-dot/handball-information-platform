@@ -27,3 +27,5 @@ export const createMatch = (input: MatchInput) =>
   apiRequest<MatchRecord>('/api/matches', { method: 'POST', body: JSON.stringify(input) })
 export const updateMatch = (id: number, input: Partial<MatchInput>) =>
   apiRequest<MatchRecord>(`/api/matches/${id}`, { method: 'PATCH', body: JSON.stringify(input) })
+export const deleteMatch = (id: number) =>
+  apiRequest<void>(`/api/matches/${id}`, { method: 'DELETE' })

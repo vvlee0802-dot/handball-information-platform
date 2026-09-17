@@ -1,7 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.models.competition import Competition
+from app.models.match import Match
 from app.schemas.competition import CompetitionCreate, CompetitionUpdate
 
 
@@ -36,3 +37,14 @@ def update_competition(
     db.commit()
     db.refresh(competition)
     return competition
+
+
+def has_matches(db: Session, competition_id: int) -> bool:
+    return bool(
+        db.scalar(select(exists().where(Match.competition_id == competition_id)))
+    )
+
+
+def delete_competition(db: Session, competition: Competition) -> None:
+    db.delete(competition)
+    db.commit()

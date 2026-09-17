@@ -8,7 +8,7 @@
 
 1. 完成 Vue 3 + TypeScript 前端与 FastAPI 后端分离，并通过 Vite 代理连接 `/api`。
 2. 建立 PostgreSQL、SQLAlchemy 和 Alembic 数据层，实现赛事、球队、球员、场馆和比赛的数据持久化与迁移。
-3. 实现基础数据的新增、列表、详情和编辑接口，并加入外键存在性、主客队差异及完赛比分完整性校验。
+3. 实现基础数据的新增、列表、详情、编辑和删除接口，并加入外键存在性、主客队差异、完赛比分完整性及删除关联校验。
 4. 将主要页面从前端静态数据切换为真实 API 数据，补充关联展示、错误状态和前后端自动化测试，并用 v1.0 需求文档替换旧版需求。
 
 ## US2.2 本版改动
@@ -65,6 +65,7 @@
 
 - 赛事、比赛、球队、球员和场馆的列表与详情展示
 - 赛事、球队、球员、场馆和比赛数据的新增与编辑
+- 赛事、球队、球员、场馆和比赛数据的权限化删除与关联冲突提示
 - 赛事、球队、球员、场馆和比赛之间的关联查询与跳转
 - 比赛主客队、比分状态和外键关系校验
 - 录像与 AI 分析的后续功能入口
@@ -157,8 +158,8 @@ python -m pytest -q
 ```text
 ESLint                         Passed
 TypeScript type-check          Passed
-Frontend unit tests            27 passed
-Backend tests                  30 passed
+Frontend unit tests            32 passed
+Backend tests                  33 passed
 Production build               Passed
 ```
 
@@ -180,6 +181,7 @@ Production build               Passed
 ### Epic 2 Platform Backend Data Persistence and Accounts
 
 - [x] US2.1 基础业务数据后端化与持久化
+- [x] US2.1 基础业务数据安全删除
 - [x] US2.2 登录平台并保持会话
 - [x] US2.3 用户角色和权限
 

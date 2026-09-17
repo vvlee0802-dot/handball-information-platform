@@ -31,3 +31,8 @@ def update_player(db: Session, player: Player, player_data: PlayerUpdate) -> Pla
     db.commit()
     db.refresh(player)
     return player
+
+
+def delete_player(db: Session, player: Player) -> None:
+    db.delete(player)
+    db.commit()

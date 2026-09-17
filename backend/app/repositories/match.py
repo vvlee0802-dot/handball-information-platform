@@ -1,7 +1,9 @@
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.models.match import Match
+from app.models.video import Video
+from app.models.video_upload import VideoUploadSession
 from app.schemas.match import MatchCreate, MatchUpdate
 
 
@@ -24,3 +26,28 @@ def update_match(db: Session, match: Match, data: MatchUpdate) -> Match:
         setattr(match, field, value)
     db.commit(); db.refresh(match)
     return match
+
+
+def has_active_video_data(db: Session, match_id: int) -> bool:
+    has_videos = db.scalar(
+        select(
+            exists().where(
+                Video.match_id == match_id,
+                Video.deleted_at.is_(None),
+            )
+        )
+    )
+    has_uploads = db.scalar(
+        select(
+            exists().where(
+                VideoUploadSession.match_id == match_id,
+                VideoUploadSession.status.in_(["uploading", "assembling", "failed"]),
+            )
+        )
+    )
+    return bool(has_videos or has_uploads)
+
+
+def delete_match(db: Session, match: Match) -> None:
+    db.delete(match)
+    db.commit()

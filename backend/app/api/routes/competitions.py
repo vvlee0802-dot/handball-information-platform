@@ -60,3 +60,20 @@ def update_competition(
         competition,
         competition_data,
     )
+
+
+@router.delete("/{competition_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_competition(
+    competition_id: int,
+    db: DatabaseSession,
+    _current_user: ManageCompetitionDataUser,
+) -> None:
+    competition = competition_repository.get_competition(db, competition_id)
+    if competition is None:
+        raise HTTPException(status_code=404, detail="Competition not found")
+    if competition_repository.has_matches(db, competition_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该赛事仍有关联比赛，请先删除相关比赛。",
+        )
+    competition_repository.delete_competition(db, competition)
