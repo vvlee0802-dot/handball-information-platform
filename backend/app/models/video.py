@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -24,6 +24,10 @@ class Video(Base):
     storage_key: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    video_type: Mapped[str] = mapped_column(
+        String(30), default="original", server_default="original", nullable=False
+    )
     status: Mapped[str] = mapped_column(
         String(20),
         default="uploaded",
@@ -58,6 +62,7 @@ class Video(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

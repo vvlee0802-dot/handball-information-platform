@@ -15,14 +15,18 @@ import {
 import { listTeams, type TeamRecord } from '@/services/teams'
 import { listVenues, type VenueRecord } from '@/services/venues'
 import {
+  deleteVideo,
   formatBytes,
+  formatDuration,
   getVideoUploadPolicy,
   listMatchVideos,
   retryVideoProcessing,
+  readVideoDuration,
   uploadMatchVideoResumable,
   validateVideoFile,
   type VideoRecord,
   type VideoProcessingStatus,
+  type VideoType,
   type VideoUploadPolicy,
 } from '@/services/videos'
 
@@ -40,12 +44,15 @@ const error = ref(''),
 const videos = ref<VideoRecord[]>([])
 const uploadPolicy = ref<VideoUploadPolicy | null>(null)
 const selectedVideo = ref<File | null>(null)
+const selectedVideoDuration = ref<number | null>(null)
+const selectedVideoType = ref<VideoType>('original')
 const videoInput = ref<HTMLInputElement | null>(null)
 const videoError = ref('')
 const videoMessage = ref('')
 const uploadProgress = ref(0)
 const uploading = ref(false)
 const retryingVideoId = ref<number | null>(null)
+const deletingVideoId = ref<number | null>(null)
 let videoPollTimer: ReturnType<typeof setTimeout> | null = null
 let activeUploadController: AbortController | null = null
 const form = reactive<MatchInput>({
@@ -79,6 +86,12 @@ const processingClasses: Record<VideoProcessingStatus, string> = {
   completed: 'status-ready',
   failed: 'status-failed',
 }
+const videoTypeLabels: Record<VideoType, string> = {
+  original: '原始录像',
+  supplementary: '补充机位',
+  processed: '处理结果',
+}
+const formatUploadTime = (value: string) => new Date(value).toLocaleString('zh-CN')
 
 const fill = (record: MatchRecord) =>
   Object.assign(form, { ...record, start_time: record.start_time.slice(0, 5) })
@@ -174,13 +187,18 @@ const loadUploadPolicy = async () => {
   }
 }
 
-const chooseVideo = (event: Event) => {
+const chooseVideo = async (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0] ?? null
   selectedVideo.value = file
+  selectedVideoDuration.value = null
   videoError.value = ''
   videoMessage.value = ''
   if (file && uploadPolicy.value) {
     videoError.value = validateVideoFile(file, uploadPolicy.value) ?? ''
+    if (!videoError.value) {
+      const duration = await readVideoDuration(file)
+      if (selectedVideo.value === file) selectedVideoDuration.value = duration
+    }
   }
 }
 
@@ -200,6 +218,8 @@ const submitVideo = async () => {
   try {
     await uploadMatchVideoResumable(match.value.id, selectedVideo.value, {
       signal: activeUploadController.signal,
+      videoType: selectedVideoType.value,
+      durationSeconds: selectedVideoDuration.value,
       onProgress: (percent) => {
         uploadProgress.value = percent
       },
@@ -209,6 +229,8 @@ const submitVideo = async () => {
     })
     videoMessage.value = '录像上传成功，已经与本场比赛关联。'
     selectedVideo.value = null
+    selectedVideoDuration.value = null
+    selectedVideoType.value = 'original'
     if (videoInput.value) videoInput.value.value = ''
     await loadVideos()
   } catch (e) {
@@ -240,6 +262,22 @@ const retryProcessing = async (video: VideoRecord) => {
     videoError.value = e instanceof Error ? e.message : '重新处理失败'
   } finally {
     retryingVideoId.value = null
+  }
+}
+
+const removeVideo = async (video: VideoRecord) => {
+  if (!window.confirm(`确定删除视频“${video.original_filename}”吗？服务器文件也会被删除。`)) return
+  deletingVideoId.value = video.id
+  videoError.value = ''
+  videoMessage.value = ''
+  try {
+    await deleteVideo(video.id)
+    videoMessage.value = `已删除 ${video.original_filename}。`
+    await loadVideos()
+  } catch (e) {
+    videoError.value = e instanceof Error ? e.message : '视频删除失败'
+  } finally {
+    deletingVideoId.value = null
   }
 }
 
@@ -429,9 +467,19 @@ onUnmounted(() => {
                 @change="chooseVideo"
               />
             </div>
+            <div class="field video-type-field">
+              <label for="video-type">视频类型</label>
+              <select id="video-type" v-model="selectedVideoType" :disabled="uploading">
+                <option value="original">原始录像</option>
+                <option value="supplementary">补充机位</option>
+                <option value="processed">处理结果</option>
+              </select>
+            </div>
             <div v-if="selectedVideo" class="selected-file">
               <span>{{ selectedVideo.name }}</span>
-              <strong>{{ formatBytes(selectedVideo.size) }}</strong>
+              <strong>
+                {{ formatDuration(selectedVideoDuration) }} · {{ formatBytes(selectedVideo.size) }}
+              </strong>
             </div>
             <div v-if="uploading" class="progress-row" aria-live="polite">
               <progress :value="uploadProgress" max="100" />
@@ -464,7 +512,12 @@ onUnmounted(() => {
               <div class="video-info">
                 <div class="video-title-row">
                   <strong>{{ video.original_filename }}</strong>
-                  <span>{{ formatBytes(video.size_bytes) }}</span>
+                  <span>{{ videoTypeLabels[video.video_type] }}</span>
+                </div>
+                <div class="video-metadata-row">
+                  <span>时长 {{ formatDuration(video.duration_seconds) }}</span>
+                  <span>大小 {{ formatBytes(video.size_bytes) }}</span>
+                  <span>上传于 {{ formatUploadTime(video.created_at) }}</span>
                 </div>
                 <div class="video-status-row">
                   <span class="status-badge status-ready">uploaded</span>
@@ -475,6 +528,23 @@ onUnmounted(() => {
                     {{ processingLabels[video.processing_status] }}
                   </span>
                   <small>第 {{ video.processing_attempts }} 次处理</small>
+                  <button
+                    v-if="authStore.hasPermission('upload_and_annotate_video')"
+                    class="button button-danger video-delete-button"
+                    type="button"
+                    :disabled="
+                      ['queued', 'processing'].includes(video.processing_status) ||
+                      deletingVideoId === video.id
+                    "
+                    :title="
+                      ['queued', 'processing'].includes(video.processing_status)
+                        ? '处理任务运行期间不能删除'
+                        : '删除视频'
+                    "
+                    @click="removeVideo(video)"
+                  >
+                    {{ deletingVideoId === video.id ? '删除中…' : '删除' }}
+                  </button>
                 </div>
                 <div
                   v-if="['queued', 'processing'].includes(video.processing_status)"
@@ -532,6 +602,7 @@ onUnmounted(() => {
 .video-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .upload-form { margin-top: 22px; padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
 .upload-form input[type='file'] { height: auto; padding: 10px; background: white; }
+.video-type-field { margin-top: 14px; }
 .selected-file,
 .progress-row,
 .video-list li { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
@@ -543,12 +614,16 @@ onUnmounted(() => {
 .video-list li { padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
 .video-info { display: grid; width: 100%; gap: 12px; }
 .video-title-row,
+.video-metadata-row,
 .video-status-row,
 .processing-progress,
 .processing-failure { display: flex; align-items: center; gap: 9px; }
 .video-title-row { justify-content: space-between; }
 .video-title-row span,
+.video-metadata-row,
 .video-status-row small { color: var(--muted); font-size: 12px; }
+.video-metadata-row { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.video-delete-button { margin-left: auto; padding: 7px 12px; }
 .processing-progress progress { width: min(420px, 100%); height: 10px; accent-color: var(--primary); }
 .processing-progress span { min-width: 38px; color: var(--primary-dark); font-size: 12px; font-weight: 750; }
 .processing-failure { justify-content: space-between; padding: 12px; border-radius: 10px; color: var(--danger); background: var(--danger-soft); }
@@ -562,6 +637,7 @@ onUnmounted(() => {
   .video-heading,
   .video-list li,
   .video-title-row,
+  .video-metadata-row,
   .processing-failure { align-items: flex-start; flex-direction: column; }
 }
 </style>

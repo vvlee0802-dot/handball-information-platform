@@ -13,6 +13,7 @@ def find_resumable_session(
     original_filename: str,
     content_type: str,
     total_size: int,
+    video_type: str,
 ) -> VideoUploadSession | None:
     return db.scalar(
         select(VideoUploadSession)
@@ -23,6 +24,7 @@ def find_resumable_session(
             VideoUploadSession.original_filename == original_filename,
             VideoUploadSession.content_type == content_type,
             VideoUploadSession.total_size == total_size,
+            VideoUploadSession.video_type == video_type,
             VideoUploadSession.status.in_(["uploading", "failed"]),
         )
         .order_by(VideoUploadSession.created_at.desc())

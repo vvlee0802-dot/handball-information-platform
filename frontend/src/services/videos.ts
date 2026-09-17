@@ -1,6 +1,7 @@
 import { ApiError, apiRequest } from '@/services/http'
 
 export type VideoProcessingStatus = 'queued' | 'processing' | 'completed' | 'failed'
+export type VideoType = 'original' | 'supplementary' | 'processed'
 
 export interface VideoRecord {
   id: number
@@ -9,7 +10,9 @@ export interface VideoRecord {
   original_filename: string
   content_type: string
   size_bytes: number
-  status: 'uploaded'
+  duration_seconds: number | null
+  video_type: VideoType
+  status: 'uploaded' | 'deleted'
   processing_status: VideoProcessingStatus
   processing_progress: number
   processing_attempts: number
@@ -17,6 +20,7 @@ export interface VideoRecord {
   checksum_sha256: string | null
   processing_started_at: string | null
   processing_completed_at: string | null
+  deleted_at: string | null
   created_at: string
 }
 
@@ -38,6 +42,8 @@ export interface VideoUploadSession {
   match_id: number
   original_filename: string
   total_size: number
+  duration_seconds: number | null
+  video_type: VideoType
   chunk_size: number
   total_parts: number
   status: 'uploading' | 'assembling' | 'completed' | 'cancelled' | 'failed'
@@ -49,6 +55,8 @@ export interface VideoUploadSession {
 
 export interface ResumableUploadOptions {
   signal?: AbortSignal
+  videoType: VideoType
+  durationSeconds: number | null
   onProgress: (percent: number) => void
   onResume?: (uploadedParts: number, percent: number) => void
 }
@@ -61,6 +69,9 @@ export const listMatchVideos = (matchId: number) =>
 
 export const retryVideoProcessing = (videoId: number) =>
   apiRequest<VideoRecord>(`/api/videos/${videoId}/retry`, { method: 'POST' })
+
+export const deleteVideo = (videoId: number) =>
+  apiRequest<void>(`/api/videos/${videoId}`, { method: 'DELETE' })
 
 export const validateVideoFile = (file: File, policy: VideoUploadPolicy): string | null => {
   const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
@@ -86,6 +97,39 @@ export const formatBytes = (bytes: number): string => {
   }
   return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`
 }
+
+export const formatDuration = (seconds: number | null): string => {
+  if (seconds === null || !Number.isFinite(seconds)) return '待识别'
+  const rounded = Math.max(0, Math.round(seconds))
+  const hours = Math.floor(rounded / 3600)
+  const minutes = Math.floor((rounded % 3600) / 60)
+  const remainingSeconds = rounded % 60
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`
+    : `${minutes}:${String(remainingSeconds).padStart(2, '0')}`
+}
+
+export const readVideoDuration = (file: File) =>
+  new Promise<number | null>((resolve) => {
+    const video = document.createElement('video')
+    const objectUrl = URL.createObjectURL(file)
+    let settled = false
+    const finish = (duration: number | null) => {
+      if (settled) return
+      settled = true
+      URL.revokeObjectURL(objectUrl)
+      video.removeAttribute('src')
+      resolve(duration)
+    }
+    video.preload = 'metadata'
+    video.addEventListener(
+      'loadedmetadata',
+      () => finish(Number.isFinite(video.duration) ? video.duration : null),
+      { once: true },
+    )
+    video.addEventListener('error', () => finish(null), { once: true })
+    video.src = objectUrl
+  })
 
 const readUploadError = (xhr: XMLHttpRequest) => {
   try {
@@ -185,6 +229,8 @@ export const uploadMatchVideoResumable = async (
         content_type: file.type || 'video/mp4',
         total_size: file.size,
         fingerprint: createVideoFingerprint(file),
+        duration_seconds: options.durationSeconds,
+        video_type: options.videoType,
       }),
     })
 

@@ -30,6 +30,7 @@ router = APIRouter(tags=["videos"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 ACCEPTED_CONTENT_TYPES = {"video/mp4", "application/mp4"}
 ACCEPTED_EXTENSIONS = {".mp4"}
+ACCEPTED_VIDEO_TYPES = {"original", "supplementary", "processed"}
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 
 
@@ -47,6 +48,13 @@ def read_filename(raw_filename: str | None) -> str:
     if Path(filename).suffix.lower() not in ACCEPTED_EXTENSIONS:
         raise HTTPException(status_code=415, detail="Only MP4 video files are supported")
     return filename
+
+
+def read_video_type(raw_video_type: str | None) -> str:
+    video_type = (raw_video_type or "original").lower()
+    if video_type not in ACCEPTED_VIDEO_TYPES:
+        raise HTTPException(status_code=422, detail="Unsupported video type")
+    return video_type
 
 
 def upload_directory(upload_id: str) -> Path:
@@ -68,6 +76,8 @@ def serialize_upload_session(db: Session, session: VideoUploadSession) -> VideoU
         match_id=session.match_id,
         original_filename=session.original_filename,
         total_size=session.total_size,
+        duration_seconds=session.duration_seconds,
+        video_type=session.video_type,
         chunk_size=session.chunk_size,
         total_parts=session.total_parts,
         status=session.status,
@@ -107,6 +117,7 @@ def create_or_resume_video_upload(
 ) -> VideoUploadSessionRead:
     validate_match_exists(db, match_id)
     filename = read_filename(payload.original_filename)
+    video_type = read_video_type(payload.video_type)
     content_type = payload.content_type.split(";", maxsplit=1)[0].lower()
     if content_type not in ACCEPTED_CONTENT_TYPES:
         raise HTTPException(status_code=415, detail="Only MP4 video files are supported")
@@ -121,6 +132,7 @@ def create_or_resume_video_upload(
         original_filename=filename,
         content_type=content_type,
         total_size=payload.total_size,
+        video_type=video_type,
     )
     if existing is not None:
         if existing.status == "failed":
@@ -139,6 +151,8 @@ def create_or_resume_video_upload(
         original_filename=filename,
         content_type=content_type,
         total_size=payload.total_size,
+        duration_seconds=payload.duration_seconds,
+        video_type=video_type,
         chunk_size=chunk_size,
         total_parts=ceil(payload.total_size / chunk_size),
         status="uploading",
@@ -296,6 +310,8 @@ def complete_video_upload(
             storage_key=storage_key,
             content_type=session.content_type,
             size_bytes=total_bytes,
+            duration_seconds=session.duration_seconds,
+            video_type=session.video_type,
         )
         session = db.get(VideoUploadSession, upload_id)
         if session is None:
@@ -364,9 +380,14 @@ async def upload_match_video(
     db: DatabaseSession,
     current_user: UploadVideoUser,
     x_original_filename: Annotated[str | None, Header()] = None,
+    x_video_type: Annotated[str | None, Header()] = None,
+    x_video_duration_seconds: Annotated[float | None, Header()] = None,
 ) -> VideoRead:
     validate_match_exists(db, match_id)
     filename = read_filename(x_original_filename)
+    video_type = read_video_type(x_video_type)
+    if x_video_duration_seconds is not None and x_video_duration_seconds < 0:
+        raise HTTPException(status_code=422, detail="Video duration cannot be negative")
     content_type = request.headers.get("content-type", "").split(";", maxsplit=1)[0].lower()
     if content_type not in ACCEPTED_CONTENT_TYPES:
         raise HTTPException(status_code=415, detail="Only MP4 video files are supported")
@@ -417,6 +438,8 @@ async def upload_match_video(
                 storage_key=storage_key,
                 content_type=content_type,
                 size_bytes=total_bytes,
+                duration_seconds=x_video_duration_seconds,
+                video_type=video_type,
             )
             background_tasks.add_task(process_video, video.id, db.get_bind())
             return video
@@ -442,6 +465,8 @@ def retry_video_processing(
     video = videos.get_video(db, video_id)
     if video is None:
         raise HTTPException(status_code=404, detail="Video not found")
+    if video.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Video not found")
     if video.processing_status != "failed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -451,3 +476,29 @@ def retry_video_processing(
     queued_video = videos.queue_video_for_retry(db, video)
     background_tasks.add_task(process_video, queued_video.id, db.get_bind())
     return queued_video
+
+
+@router.delete("/api/videos/{video_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_video(
+    video_id: int,
+    db: DatabaseSession,
+    _current_user: UploadVideoUser,
+) -> None:
+    video = videos.get_video(db, video_id)
+    if video is None or video.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    if video.processing_status in {"queued", "processing"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Video cannot be deleted while a processing task is active",
+        )
+
+    stored_path = settings.video_storage_path / video.storage_key
+    try:
+        stored_path.unlink(missing_ok=True)
+    except OSError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Stored video could not be removed",
+        ) from error
+    videos.soft_delete_video(db, video)

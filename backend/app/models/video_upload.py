@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -20,6 +20,10 @@ class VideoUploadSession(Base):
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     total_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    video_type: Mapped[str] = mapped_column(
+        String(30), default="original", server_default="original", nullable=False
+    )
     chunk_size: Mapped[int] = mapped_column(Integer, nullable=False)
     total_parts: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(

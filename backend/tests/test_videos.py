@@ -317,3 +317,97 @@ def test_cancelling_upload_marks_session_and_cleans_temporary_parts(
                 VideoUploadPart.upload_id == session["id"]
             )
         ) == 0
+
+
+def test_multiple_videos_keep_independent_metadata_and_deletion_is_soft(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    match_id = create_match(client)
+    replace_login(client, email="manager@example.com", role=UserRole.COACH_ANALYST)
+    monkeypatch.setattr(settings, "video_upload_dir", tmp_path)
+
+    original = client.put(
+        f"/api/matches/{match_id}/videos",
+        content=VALID_MP4,
+        headers={
+            "Content-Type": "video/mp4",
+            "X-Original-Filename": "original.mp4",
+            "X-Video-Type": "original",
+            "X-Video-Duration-Seconds": "3723.5",
+        },
+    )
+    supplementary = client.put(
+        f"/api/matches/{match_id}/videos",
+        content=VALID_MP4,
+        headers={
+            "Content-Type": "video/mp4",
+            "X-Original-Filename": "camera-b.mp4",
+            "X-Video-Type": "supplementary",
+            "X-Video-Duration-Seconds": "3719.25",
+        },
+    )
+
+    assert original.status_code == 201
+    assert supplementary.status_code == 201
+    listed = client.get(f"/api/matches/{match_id}/videos").json()
+    assert len(listed) == 2
+    assert {video["original_filename"] for video in listed} == {"original.mp4", "camera-b.mp4"}
+    camera_video = next(video for video in listed if video["original_filename"] == "camera-b.mp4")
+    assert camera_video["video_type"] == "supplementary"
+    assert camera_video["duration_seconds"] == 3719.25
+    assert camera_video["size_bytes"] == len(VALID_MP4)
+    assert camera_video["created_at"]
+    assert camera_video["processing_status"] == "completed"
+    assert len(list(tmp_path.glob(f"{match_id}/*.mp4"))) == 2
+
+    with TestingSessionLocal() as db:
+        stored_key = db.get(Video, camera_video["id"]).storage_key
+    deleted = client.delete(f"/api/videos/{camera_video['id']}")
+
+    assert deleted.status_code == 204
+    assert not (tmp_path / stored_key).exists()
+    remaining = client.get(f"/api/matches/{match_id}/videos").json()
+    assert len(remaining) == 1
+    assert remaining[0]["original_filename"] == "original.mp4"
+    with TestingSessionLocal() as db:
+        deleted_video = db.get(Video, camera_video["id"])
+        assert deleted_video is not None
+        assert deleted_video.status == "deleted"
+        assert deleted_video.deleted_at is not None
+
+
+def test_video_with_active_task_cannot_be_deleted_and_athlete_lacks_permission(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    match_id = create_match(client)
+    replace_login(client, email="busy@example.com", role=UserRole.COACH_ANALYST)
+    monkeypatch.setattr(settings, "video_upload_dir", tmp_path)
+    uploaded = client.put(
+        f"/api/matches/{match_id}/videos",
+        content=VALID_MP4,
+        headers={"Content-Type": "video/mp4", "X-Original-Filename": "busy.mp4"},
+    ).json()
+    with TestingSessionLocal() as db:
+        video = db.get(Video, uploaded["id"])
+        assert video is not None
+        video.processing_status = "processing"
+        db.commit()
+
+    busy_response = client.delete(f"/api/videos/{uploaded['id']}")
+    assert busy_response.status_code == 409
+    assert (tmp_path / db_video_storage_key(uploaded["id"])).exists()
+
+    replace_login(client, email="video-athlete@example.com", role=UserRole.ATHLETE)
+    forbidden = client.delete(f"/api/videos/{uploaded['id']}")
+    assert forbidden.status_code == 403
+
+
+def db_video_storage_key(video_id: int) -> str:
+    with TestingSessionLocal() as db:
+        video = db.get(Video, video_id)
+        assert video is not None
+        return video.storage_key

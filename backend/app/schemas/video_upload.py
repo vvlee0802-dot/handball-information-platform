@@ -9,6 +9,8 @@ class VideoUploadCreate(BaseModel):
     content_type: str = Field(min_length=1, max_length=100)
     total_size: int = Field(gt=0)
     fingerprint: str = Field(min_length=1, max_length=500)
+    duration_seconds: float | None = Field(default=None, ge=0)
+    video_type: Literal["original", "supplementary", "processed"] = "original"
 
 
 class VideoUploadPartRead(BaseModel):
@@ -22,6 +24,8 @@ class VideoUploadSessionRead(BaseModel):
     match_id: int
     original_filename: str
     total_size: int
+    duration_seconds: float | None
+    video_type: Literal["original", "supplementary", "processed"]
     chunk_size: int
     total_parts: int
     status: Literal["uploading", "assembling", "completed", "cancelled", "failed"]

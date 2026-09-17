@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -8,7 +10,7 @@ def list_match_videos(db: Session, match_id: int) -> list[Video]:
     return list(
         db.scalars(
             select(Video)
-            .where(Video.match_id == match_id)
+            .where(Video.match_id == match_id, Video.deleted_at.is_(None))
             .order_by(Video.created_at.desc(), Video.id.desc())
         )
     )
@@ -39,6 +41,8 @@ def create_video(
     storage_key: str,
     content_type: str,
     size_bytes: int,
+    duration_seconds: float | None = None,
+    video_type: str = "original",
 ) -> Video:
     video = Video(
         match_id=match_id,
@@ -47,11 +51,21 @@ def create_video(
         storage_key=storage_key,
         content_type=content_type,
         size_bytes=size_bytes,
+        duration_seconds=duration_seconds,
+        video_type=video_type,
         status="uploaded",
         processing_status="queued",
         processing_progress=0,
     )
     db.add(video)
+    db.commit()
+    db.refresh(video)
+    return video
+
+
+def soft_delete_video(db: Session, video: Video) -> Video:
+    video.status = "deleted"
+    video.deleted_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(video)
     return video
