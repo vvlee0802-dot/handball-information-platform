@@ -9,6 +9,7 @@ from app.api.routes.matches import router as matches_router
 from app.api.routes.players import router as players_router
 from app.api.routes.teams import router as teams_router
 from app.api.routes.venues import router as venues_router
+from app.api.routes.videos import router as videos_router
 from app.db.session import engine
 
 app = FastAPI(
@@ -23,6 +24,7 @@ app.include_router(matches_router)
 app.include_router(players_router)
 app.include_router(teams_router)
 app.include_router(venues_router)
+app.include_router(videos_router)
 
 
 @app.get("/api/health")

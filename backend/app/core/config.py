@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     session_cookie_name: str = "handball_session"
     session_max_age_seconds: int = 60 * 60 * 24 * 7
     session_cookie_secure: bool = False
+    video_upload_max_bytes: int = 10 * 1024**3
+    video_upload_dir: Path = PROJECT_ROOT / "backend" / "uploads"
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
@@ -28,6 +30,12 @@ class Settings(BaseSettings):
             f"{self.postgres_user}:{self.postgres_password}"
             f"@localhost:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def video_storage_path(self) -> Path:
+        if self.video_upload_dir.is_absolute():
+            return self.video_upload_dir
+        return PROJECT_ROOT / self.video_upload_dir
 
 
 settings = Settings()

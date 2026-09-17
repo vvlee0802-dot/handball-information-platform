@@ -58,3 +58,11 @@ ManageUsersUser = Annotated[
     User,
     Depends(require_permission(Permission.MANAGE_USERS)),
 ]
+ViewAuthorizedVideoUser = Annotated[
+    User,
+    Depends(require_permission(Permission.VIEW_AUTHORIZED_VIDEO)),
+]
+UploadVideoUser = Annotated[
+    User,
+    Depends(require_permission(Permission.UPLOAD_AND_ANNOTATE_VIDEO)),
+]

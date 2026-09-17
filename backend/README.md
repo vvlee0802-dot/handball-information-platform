@@ -31,6 +31,23 @@ US2.3 已实现：
 - `PATCH /api/admin/users/{user_id}`
 - 停用账号时撤销该用户现有会话
 
+US3.1 已实现：
+
+- `videos` 数据表及 Alembic 迁移
+- `GET /api/videos/upload-policy`
+- `GET /api/matches/{match_id}/videos`
+- `PUT /api/matches/{match_id}/videos`
+- MP4 扩展名、媒体类型、文件头和大小的后端校验
+- 默认 10 GiB 上限和流式本地文件写入
+- 比赛视频上传权限检查及 uploaded 状态持久化
+
+视频文件默认保存在 `backend/uploads`，该目录不提交到 Git。可以通过根目录 `.env` 调整：
+
+```bash
+VIDEO_UPLOAD_MAX_BYTES=10737418240
+VIDEO_UPLOAD_DIR=backend/uploads
+```
+
 应用迁移并创建首个本地用户：
 
 ```bash

@@ -14,6 +14,15 @@ import {
 } from '@/services/matches'
 import { listTeams, type TeamRecord } from '@/services/teams'
 import { listVenues, type VenueRecord } from '@/services/venues'
+import {
+  formatBytes,
+  getVideoUploadPolicy,
+  listMatchVideos,
+  uploadMatchVideo,
+  validateVideoFile,
+  type VideoRecord,
+  type VideoUploadPolicy,
+} from '@/services/videos'
 
 const authStore = useAuthStore()
 const route = useRoute()
@@ -26,6 +35,14 @@ const loading = ref(true),
   saving = ref(false)
 const error = ref(''),
   message = ref('')
+const videos = ref<VideoRecord[]>([])
+const uploadPolicy = ref<VideoUploadPolicy | null>(null)
+const selectedVideo = ref<File | null>(null)
+const videoInput = ref<HTMLInputElement | null>(null)
+const videoError = ref('')
+const videoMessage = ref('')
+const uploadProgress = ref(0)
+const uploading = ref(false)
 const form = reactive<MatchInput>({
   competition_id: 0,
   home_team_id: 0,
@@ -108,6 +125,75 @@ const save = async () => {
     saving.value = false
   }
 }
+
+const loadVideos = async () => {
+  if (!match.value || !authStore.hasPermission('view_authorized_video')) return
+  try {
+    videos.value = await listMatchVideos(match.value.id)
+  } catch (e) {
+    videoError.value = e instanceof Error ? e.message : '视频记录加载失败'
+  }
+}
+
+const loadUploadPolicy = async () => {
+  if (!authStore.hasPermission('upload_and_annotate_video')) return
+  try {
+    uploadPolicy.value = await getVideoUploadPolicy()
+  } catch (e) {
+    videoError.value = e instanceof Error ? e.message : '上传规则加载失败'
+  }
+}
+
+const chooseVideo = (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0] ?? null
+  selectedVideo.value = file
+  videoError.value = ''
+  videoMessage.value = ''
+  if (file && uploadPolicy.value) {
+    videoError.value = validateVideoFile(file, uploadPolicy.value) ?? ''
+  }
+}
+
+const submitVideo = async () => {
+  if (!match.value || !selectedVideo.value || !uploadPolicy.value) return
+  const validationError = validateVideoFile(selectedVideo.value, uploadPolicy.value)
+  if (validationError) {
+    videoError.value = validationError
+    return
+  }
+
+  uploading.value = true
+  uploadProgress.value = 0
+  videoError.value = ''
+  videoMessage.value = ''
+  try {
+    await uploadMatchVideo(match.value.id, selectedVideo.value, (percent) => {
+      uploadProgress.value = percent
+    })
+    videoMessage.value = '录像上传成功，已经与本场比赛关联。'
+    selectedVideo.value = null
+    if (videoInput.value) videoInput.value.value = ''
+    await loadVideos()
+  } catch (e) {
+    videoError.value = e instanceof Error ? e.message : '视频上传失败'
+  } finally {
+    uploading.value = false
+  }
+}
+
+watch(
+  [
+    () => authStore.initialized,
+    () => authStore.user?.permissions.join(','),
+    () => match.value?.id,
+  ],
+  ([initialized, , matchId]) => {
+    if (!initialized || !matchId) return
+    void loadVideos()
+    void loadUploadPolicy()
+  },
+  { immediate: true },
+)
 onMounted(load)
 </script>
 
@@ -243,6 +329,74 @@ onMounted(load)
         </dl>
         <p v-if="message" class="success">{{ message }}</p>
       </section>
+
+      <section v-if="match" class="detail-card video-section">
+        <div class="video-heading">
+          <div>
+            <p class="eyebrow">Match Video</p>
+            <h2 class="section-title">比赛录像</h2>
+            <p class="page-description">
+              MP4 · 推荐 H.264 · 1080p；单文件上限
+              {{ uploadPolicy ? formatBytes(uploadPolicy.max_size_bytes) : '10 GiB' }}。
+            </p>
+          </div>
+          <span v-if="videos.length" class="meta-chip">{{ videos.length }} 个视频</span>
+        </div>
+
+        <div v-if="!authStore.user" class="video-access-note">
+          登录后可查看获授权的比赛录像；教练或分析师可以上传录像。
+        </div>
+        <template v-else-if="authStore.hasPermission('view_authorized_video')">
+          <form
+            v-if="authStore.hasPermission('upload_and_annotate_video')"
+            class="upload-form"
+            @submit.prevent="submitVideo"
+          >
+            <div class="field">
+              <label for="match-video">选择 MP4 比赛录像</label>
+              <input
+                id="match-video"
+                ref="videoInput"
+                type="file"
+                accept=".mp4,video/mp4"
+                :disabled="uploading"
+                @change="chooseVideo"
+              />
+            </div>
+            <div v-if="selectedVideo" class="selected-file">
+              <span>{{ selectedVideo.name }}</span>
+              <strong>{{ formatBytes(selectedVideo.size) }}</strong>
+            </div>
+            <div v-if="uploading" class="progress-row" aria-live="polite">
+              <progress :value="uploadProgress" max="100" />
+              <span>{{ uploadProgress }}%</span>
+            </div>
+            <p v-if="videoError" class="error">{{ videoError }}</p>
+            <p v-if="videoMessage" class="success">{{ videoMessage }}</p>
+            <div class="filter-actions">
+              <button
+                class="button button-primary"
+                type="submit"
+                :disabled="uploading || !selectedVideo || Boolean(videoError)"
+              >
+                {{ uploading ? '正在上传…' : '上传并关联比赛' }}
+              </button>
+            </div>
+          </form>
+
+          <div v-if="videos.length === 0" class="video-empty">本场比赛还没有上传录像。</div>
+          <ul v-else class="video-list">
+            <li v-for="video in videos" :key="video.id">
+              <div>
+                <strong>{{ video.original_filename }}</strong>
+                <span>{{ formatBytes(video.size_bytes) }}</span>
+              </div>
+              <span class="status-badge status-ready">uploaded</span>
+            </li>
+          </ul>
+        </template>
+        <div v-else class="video-access-note">当前账号没有查看比赛录像的权限。</div>
+      </section>
     </main>
   </div>
 </template>
@@ -270,9 +424,28 @@ onMounted(load)
   color: var(--success);
   font-weight: 650;
 }
+.video-section { margin-top: 20px; }
+.video-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.upload-form { margin-top: 22px; padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
+.upload-form input[type='file'] { height: auto; padding: 10px; background: white; }
+.selected-file,
+.progress-row,
+.video-list li { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.selected-file { margin-top: 12px; color: var(--muted-strong); font-size: 13px; }
+.progress-row { margin-top: 14px; }
+.progress-row progress { width: 100%; height: 12px; accent-color: var(--primary); }
+.progress-row span { min-width: 42px; color: var(--primary-dark); font-weight: 750; text-align: right; }
+.video-list { display: grid; gap: 10px; margin: 20px 0 0; padding: 0; list-style: none; }
+.video-list li { padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; }
+.video-list li div { display: grid; gap: 4px; }
+.video-list li span:not(.status-badge) { color: var(--muted); font-size: 12px; }
+.video-empty,
+.video-access-note { margin-top: 20px; padding: 18px; border-radius: 12px; color: var(--muted-strong); background: var(--surface-soft); }
 @media (max-width: 620px) {
   .detail-actions {
     align-items: flex-start;
   }
+  .video-heading,
+  .video-list li { align-items: flex-start; flex-direction: column; }
 }
 </style>
