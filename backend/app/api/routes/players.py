@@ -72,4 +72,9 @@ def delete_player(
     player = player_repository.get_player(db, player_id)
     if player is None:
         raise HTTPException(status_code=404, detail="Player not found")
+    if player_repository.has_events(db, player_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该球员仍有关联比赛事件，请先处理相关事件。",
+        )
     player_repository.delete_player(db, player)

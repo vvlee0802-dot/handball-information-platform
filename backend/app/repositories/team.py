@@ -2,6 +2,7 @@ from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.team import Team
+from app.models.event import Event
 from app.models.match import Match
 from app.models.player import Player
 from app.schemas.team import TeamCreate, TeamUpdate
@@ -41,7 +42,8 @@ def has_players_or_matches(db: Session, team_id: int) -> bool:
             )
         )
     )
-    return bool(has_players or has_matches)
+    has_events = db.scalar(select(exists().where(Event.team_id == team_id)))
+    return bool(has_players or has_matches or has_events)
 
 
 def delete_team(db: Session, team: Team) -> None:

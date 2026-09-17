@@ -8,6 +8,7 @@ from urllib.parse import unquote
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import UploadVideoUser, ViewAuthorizedVideoUser
@@ -368,6 +369,21 @@ def list_match_videos(
     return videos.list_match_videos(db, match_id)
 
 
+@router.get("/api/videos/{video_id}/content", response_class=FileResponse)
+def stream_video(
+    video_id: int,
+    db: DatabaseSession,
+    _current_user: ViewAuthorizedVideoUser,
+) -> FileResponse:
+    video = videos.get_video(db, video_id)
+    if video is None or video.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    stored_path = settings.video_storage_path / video.storage_key
+    if not stored_path.is_file():
+        raise HTTPException(status_code=404, detail="Stored video file not found")
+    return FileResponse(stored_path, media_type=video.content_type)
+
+
 @router.put(
     "/api/matches/{match_id}/videos",
     response_model=VideoRead,
@@ -491,6 +507,11 @@ def delete_video(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Video cannot be deleted while a processing task is active",
+        )
+    if videos.has_events(db, video_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Video cannot be deleted while it has match events",
         )
 
     stored_path = settings.video_storage_path / video.storage_key

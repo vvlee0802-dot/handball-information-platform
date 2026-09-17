@@ -67,6 +67,8 @@ export const getVideoUploadPolicy = () =>
 export const listMatchVideos = (matchId: number) =>
   apiRequest<VideoRecord[]>(`/api/matches/${matchId}/videos`)
 
+export const getVideoContentUrl = (videoId: number) => `/api/videos/${videoId}/content`
+
 export const retryVideoProcessing = (videoId: number) =>
   apiRequest<VideoRecord>(`/api/videos/${videoId}/retry`, { method: 'POST' })
 

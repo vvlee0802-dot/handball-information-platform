@@ -1,7 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.models.player import Player
+from app.models.event import Event
 from app.schemas.player import PlayerCreate, PlayerUpdate
 
 
@@ -36,3 +37,7 @@ def update_player(db: Session, player: Player, player_data: PlayerUpdate) -> Pla
 def delete_player(db: Session, player: Player) -> None:
     db.delete(player)
     db.commit()
+
+
+def has_events(db: Session, player_id: int) -> bool:
+    return bool(db.scalar(select(exists().where(Event.player_id == player_id))))

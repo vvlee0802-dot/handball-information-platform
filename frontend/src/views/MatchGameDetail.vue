@@ -6,6 +6,14 @@ import { useAuthStore } from '@/stores/auth'
 import NotFoundPanel from '@/components/NotFoundPanel.vue'
 import { listCompetitions, type CompetitionRecord } from '@/services/competitions'
 import {
+  createMatchEvent,
+  eventTypeLabels,
+  listMatchEvents,
+  type EventType,
+  type MatchEventInput,
+  type MatchEventRecord,
+} from '@/services/events'
+import {
   deleteMatch,
   getMatch,
   matchStatusLabels,
@@ -14,11 +22,13 @@ import {
   type MatchRecord,
 } from '@/services/matches'
 import { listTeams, type TeamRecord } from '@/services/teams'
+import { listPlayers, type PlayerRecord } from '@/services/players'
 import { listVenues, type VenueRecord } from '@/services/venues'
 import {
   deleteVideo,
   formatBytes,
   formatDuration,
+  getVideoContentUrl,
   getVideoUploadPolicy,
   listMatchVideos,
   retryVideoProcessing,
@@ -38,6 +48,7 @@ const match = ref<MatchRecord | null>(null)
 const competitions = ref<CompetitionRecord[]>([])
 const teams = ref<TeamRecord[]>([])
 const venues = ref<VenueRecord[]>([])
+const players = ref<PlayerRecord[]>([])
 const loading = ref(true),
   editing = ref(false),
   saving = ref(false),
@@ -57,6 +68,13 @@ const uploadProgress = ref(0)
 const uploading = ref(false)
 const retryingVideoId = ref<number | null>(null)
 const deletingVideoId = ref<number | null>(null)
+const events = ref<MatchEventRecord[]>([])
+const selectedPlaybackVideoId = ref<number | null>(null)
+const videoPlayer = ref<HTMLVideoElement | null>(null)
+const currentVideoTime = ref(0)
+const eventSaving = ref(false)
+const eventError = ref('')
+const eventMessage = ref('')
 let videoPollTimer: ReturnType<typeof setTimeout> | null = null
 let activeUploadController: AbortController | null = null
 const form = reactive<MatchInput>({
@@ -71,12 +89,33 @@ const form = reactive<MatchInput>({
   home_score: null,
   away_score: null,
 })
+const eventForm = reactive<MatchEventInput>({
+  video_id: 0,
+  event_type: 'goal',
+  timestamp_seconds: 0,
+  team_id: null,
+  player_id: null,
+  note: null,
+})
 const competition = computed(() =>
   competitions.value.find((x) => x.id === match.value?.competition_id),
 )
 const home = computed(() => teams.value.find((x) => x.id === match.value?.home_team_id))
 const away = computed(() => teams.value.find((x) => x.id === match.value?.away_team_id))
 const venue = computed(() => venues.value.find((x) => x.id === match.value?.venue_id))
+const playbackVideo = computed(() =>
+  videos.value.find((video) => video.id === selectedPlaybackVideoId.value),
+)
+const participantPlayers = computed(() => {
+  if (!match.value) return []
+  const participantTeamIds = new Set([match.value.home_team_id, match.value.away_team_id])
+  return players.value.filter((player) => participantTeamIds.has(player.team_id))
+})
+const selectablePlayers = computed(() =>
+  eventForm.team_id === null
+    ? participantPlayers.value
+    : participantPlayers.value.filter((player) => player.team_id === eventForm.team_id),
+)
 const scoresEnabled = computed(() => form.status === 'live' || form.status === 'completed')
 const processingLabels: Record<VideoProcessingStatus, string> = {
   queued: '等待处理',
@@ -101,16 +140,18 @@ const fill = (record: MatchRecord) =>
   Object.assign(form, { ...record, start_time: record.start_time.slice(0, 5) })
 const load = async () => {
   try {
-    const [record, cs, ts, vs] = await Promise.all([
+    const [record, cs, ts, vs, ps] = await Promise.all([
       getMatch(Number(route.params.matchId)),
       listCompetitions(),
       listTeams(),
       listVenues(),
+      listPlayers(),
     ])
     match.value = record
     competitions.value = cs
     teams.value = ts
     venues.value = vs
+    players.value = ps
     fill(record)
   } catch {
     match.value = null
@@ -180,10 +221,79 @@ const loadVideos = async () => {
   if (!match.value || !authStore.hasPermission('view_authorized_video')) return
   try {
     videos.value = await listMatchVideos(match.value.id)
+    if (
+      selectedPlaybackVideoId.value !== null &&
+      !videos.value.some((video) => video.id === selectedPlaybackVideoId.value)
+    ) {
+      selectedPlaybackVideoId.value = null
+    }
   } catch (e) {
     videoError.value = e instanceof Error ? e.message : '视频记录加载失败'
   } finally {
     scheduleVideoPolling()
+  }
+}
+
+const loadEvents = async () => {
+  if (!match.value || !authStore.hasPermission('view_authorized_video')) return
+  try {
+    events.value = await listMatchEvents(match.value.id)
+  } catch (e) {
+    eventError.value = e instanceof Error ? e.message : '事件记录加载失败'
+  }
+}
+
+const selectPlaybackVideo = (video: VideoRecord) => {
+  selectedPlaybackVideoId.value = video.id
+  eventForm.video_id = video.id
+  eventForm.timestamp_seconds = 0
+  currentVideoTime.value = 0
+  eventError.value = ''
+  eventMessage.value = ''
+}
+
+const updateCurrentVideoTime = () => {
+  currentVideoTime.value = videoPlayer.value?.currentTime ?? 0
+  eventForm.timestamp_seconds = Number(currentVideoTime.value.toFixed(3))
+}
+
+const handlePlayerSelection = () => {
+  if (eventForm.player_id === null) return
+  const player = participantPlayers.value.find((item) => item.id === eventForm.player_id)
+  if (player) eventForm.team_id = player.team_id
+}
+
+watch(
+  () => eventForm.team_id,
+  (teamId) => {
+    if (eventForm.player_id === null) return
+    const player = participantPlayers.value.find((item) => item.id === eventForm.player_id)
+    if (!player || (teamId !== null && player.team_id !== teamId)) eventForm.player_id = null
+  },
+)
+
+const submitEvent = async () => {
+  if (!match.value || !playbackVideo.value) return
+  updateCurrentVideoTime()
+  eventSaving.value = true
+  eventError.value = ''
+  eventMessage.value = ''
+  try {
+    await createMatchEvent(match.value.id, {
+      ...eventForm,
+      video_id: playbackVideo.value.id,
+      note: eventForm.note?.trim() || null,
+    })
+    eventMessage.value = `已在 ${formatDuration(eventForm.timestamp_seconds)} 保存人工事件。`
+    eventForm.event_type = 'goal'
+    eventForm.team_id = null
+    eventForm.player_id = null
+    eventForm.note = null
+    await loadEvents()
+  } catch (e) {
+    eventError.value = e instanceof Error ? e.message : '事件保存失败'
+  } finally {
+    eventSaving.value = false
   }
 }
 
@@ -310,6 +420,7 @@ watch(
   ([initialized, , matchId]) => {
     if (!initialized || !matchId) return
     void loadVideos()
+    void loadEvents()
     void loadUploadPolicy()
   },
   { immediate: true },
@@ -560,6 +671,19 @@ onUnmounted(() => {
                   </span>
                   <small>第 {{ video.processing_attempts }} 次处理</small>
                   <button
+                    class="button button-secondary video-annotate-button"
+                    type="button"
+                    :disabled="video.processing_status !== 'completed'"
+                    :title="
+                      video.processing_status === 'completed'
+                        ? '播放这段录像并进行人工标注'
+                        : '视频处理完成后才能标注'
+                    "
+                    @click="selectPlaybackVideo(video)"
+                  >
+                    {{ selectedPlaybackVideoId === video.id ? '正在标注' : '播放并标注' }}
+                  </button>
+                  <button
                     v-if="authStore.hasPermission('upload_and_annotate_video')"
                     class="button button-danger video-delete-button"
                     type="button"
@@ -601,6 +725,133 @@ onUnmounted(() => {
           </ul>
         </template>
         <div v-else class="video-access-note">当前账号没有查看比赛录像的权限。</div>
+      </section>
+
+      <section
+        v-if="
+          match &&
+          authStore.hasPermission('view_authorized_video') &&
+          (playbackVideo || events.length > 0)
+        "
+        class="detail-card annotation-section"
+      >
+        <div class="video-heading">
+          <div>
+            <p class="eyebrow">Manual Annotation</p>
+            <h2 class="section-title">人工事件标注</h2>
+            <p class="page-description">
+              播放或暂停录像到事件发生的位置，再填写事件信息。保存时会自动记录当前视频时间。
+            </p>
+          </div>
+          <span class="meta-chip">{{ events.length }} 条事件</span>
+        </div>
+
+        <div v-if="playbackVideo" class="annotation-workspace">
+          <div class="annotation-player-panel">
+            <strong>{{ playbackVideo.original_filename }}</strong>
+            <video
+              :key="playbackVideo.id"
+              ref="videoPlayer"
+              class="annotation-player"
+              controls
+              preload="metadata"
+              :src="getVideoContentUrl(playbackVideo.id)"
+              @timeupdate="updateCurrentVideoTime"
+              @seeked="updateCurrentVideoTime"
+            >
+              当前浏览器不支持视频播放。
+            </video>
+            <div class="annotation-time">
+              <span>当前时间</span>
+              <strong>{{ formatDuration(currentVideoTime) }}</strong>
+              <small>{{ currentVideoTime.toFixed(3) }} 秒</small>
+            </div>
+          </div>
+
+          <form
+            v-if="authStore.hasPermission('upload_and_annotate_video')"
+            class="event-form"
+            @submit.prevent="submitEvent"
+          >
+            <div class="field">
+              <label for="event-type">事件类型</label>
+              <select id="event-type" v-model="eventForm.event_type" required>
+                <option
+                  v-for="(label, value) in eventTypeLabels"
+                  :key="value"
+                  :value="value as EventType"
+                >
+                  {{ label }}
+                </option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="event-team">相关球队（可选）</label>
+              <select id="event-team" v-model="eventForm.team_id">
+                <option :value="null">不指定球队</option>
+                <option v-if="home" :value="home.id">{{ home.name }}</option>
+                <option v-if="away" :value="away.id">{{ away.name }}</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="event-player">相关球员（可选）</label>
+              <select
+                id="event-player"
+                v-model="eventForm.player_id"
+                @change="handlePlayerSelection"
+              >
+                <option :value="null">不指定球员</option>
+                <option v-for="player in selectablePlayers" :key="player.id" :value="player.id">
+                  {{ player.number }}号 · {{ player.name }}
+                </option>
+              </select>
+            </div>
+            <div class="field event-note-field">
+              <label for="event-note">备注（可选）</label>
+              <textarea
+                id="event-note"
+                v-model="eventForm.note"
+                rows="3"
+                maxlength="500"
+                placeholder="例如：快攻右侧射门"
+              />
+            </div>
+            <p v-if="eventError" class="error">{{ eventError }}</p>
+            <p v-if="eventMessage" class="success">{{ eventMessage }}</p>
+            <button class="button button-primary" type="submit" :disabled="eventSaving">
+              {{ eventSaving ? '正在保存…' : `保存 ${formatDuration(currentVideoTime)} 事件` }}
+            </button>
+          </form>
+          <div v-else class="video-access-note">
+            当前账号可以查看事件，但没有新增人工标注的权限。
+          </div>
+        </div>
+        <div v-else class="video-access-note">
+          请先在上方选择一段处理完成的视频，点击“播放并标注”。
+        </div>
+
+        <div class="event-list-heading">
+          <h3>时间轴事件</h3>
+          <span>按视频时间从早到晚排列</span>
+        </div>
+        <div v-if="events.length === 0" class="video-empty">还没有人工事件标注。</div>
+        <ol v-else class="event-list">
+          <li v-for="event in events" :key="event.id">
+            <time>{{ formatDuration(event.timestamp_seconds) }}</time>
+            <div>
+              <strong>{{ eventTypeLabels[event.event_type] }}</strong>
+              <span>
+                {{ teams.find((team) => team.id === event.team_id)?.short_name ?? '未指定球队' }}
+                ·
+                {{
+                  players.find((player) => player.id === event.player_id)?.name ?? '未指定球员'
+                }}
+              </span>
+              <p v-if="event.note">{{ event.note }}</p>
+            </div>
+            <span class="status-badge status-neutral">{{ event.source }}</span>
+          </li>
+        </ol>
       </section>
     </main>
   </div>
@@ -655,12 +906,34 @@ onUnmounted(() => {
 .video-status-row small { color: var(--muted); font-size: 12px; }
 .video-metadata-row { display: flex; flex-wrap: wrap; gap: 8px 18px; }
 .video-delete-button { margin-left: auto; padding: 7px 12px; }
+.video-annotate-button { margin-left: auto; padding: 7px 12px; }
+.video-annotate-button + .video-delete-button { margin-left: 0; }
 .processing-progress progress { width: min(420px, 100%); height: 10px; accent-color: var(--primary); }
 .processing-progress span { min-width: 38px; color: var(--primary-dark); font-size: 12px; font-weight: 750; }
 .processing-failure { justify-content: space-between; padding: 12px; border-radius: 10px; color: var(--danger); background: var(--danger-soft); }
 .processing-failure span { font-size: 13px; font-weight: 650; }
 .video-empty,
 .video-access-note { margin-top: 20px; padding: 18px; border-radius: 12px; color: var(--muted-strong); background: var(--surface-soft); }
+.annotation-section { margin-top: 20px; }
+.annotation-workspace { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr); gap: 22px; margin-top: 22px; }
+.annotation-player-panel,
+.event-form { padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
+.annotation-player { display: block; width: 100%; max-height: 560px; margin-top: 12px; border-radius: 10px; background: #111827; }
+.annotation-time { display: flex; align-items: baseline; gap: 12px; margin-top: 12px; }
+.annotation-time span,
+.annotation-time small { color: var(--muted); }
+.annotation-time strong { color: var(--primary-dark); font-size: 22px; }
+.event-form { display: grid; align-content: start; gap: 14px; }
+.event-form textarea { width: 100%; resize: vertical; }
+.event-list-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-top: 28px; }
+.event-list-heading h3 { margin: 0; }
+.event-list-heading span { color: var(--muted); font-size: 13px; }
+.event-list { display: grid; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }
+.event-list li { display: grid; grid-template-columns: 78px 1fr auto; align-items: start; gap: 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; }
+.event-list time { color: var(--primary-dark); font-size: 18px; font-weight: 800; }
+.event-list li > div { display: grid; gap: 5px; }
+.event-list li > div span { color: var(--muted); font-size: 13px; }
+.event-list p { margin: 0; color: var(--muted-strong); }
 @media (max-width: 620px) {
   .detail-actions {
     align-items: flex-start;
@@ -670,5 +943,8 @@ onUnmounted(() => {
   .video-title-row,
   .video-metadata-row,
   .processing-failure { align-items: flex-start; flex-direction: column; }
+  .annotation-workspace { grid-template-columns: 1fr; }
+  .event-list li { grid-template-columns: 68px 1fr; }
+  .event-list li > .status-badge { grid-column: 2; justify-self: start; }
 }
 </style>
