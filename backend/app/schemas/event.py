@@ -26,6 +26,15 @@ class EventCreate(BaseModel):
     note: str | None = Field(default=None, max_length=500)
 
 
+class EventUpdate(BaseModel):
+    video_id: int | None = None
+    event_type: EventType | None = None
+    timestamp_seconds: float | None = Field(default=None, ge=0)
+    team_id: int | None = None
+    player_id: int | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
 class EventRead(BaseModel):
     id: int
     match_id: int

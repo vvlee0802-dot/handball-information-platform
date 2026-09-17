@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.core.authorization import UserRole
 from app.core.config import settings
+from app.models.event import Event
 from app.models.video import Video
 from tests.conftest import TestingSessionLocal
 from tests.test_matches import setup_references
@@ -198,3 +199,128 @@ def test_event_relations_protect_player_and_video_from_deletion(client: TestClie
     player_deletion = client.delete(f"/api/players/{player_id}")
     assert player_deletion.status_code == 409
     assert player_deletion.json()["detail"] == "该球员仍有关联比赛事件，请先处理相关事件。"
+
+
+def test_coach_updates_event_and_edit_resets_verification(client: TestClient) -> None:
+    match_id, home_id, _, player_id = create_match_and_player(client)
+    creator = replace_login(client, email="event-editor@example.com", role=UserRole.COACH_ANALYST)
+    video_id = create_video(match_id, creator.id)
+    created = client.post(
+        f"/api/matches/{match_id}/events",
+        json={
+            "video_id": video_id,
+            "event_type": "shot",
+            "timestamp_seconds": 42,
+            "team_id": home_id,
+            "player_id": player_id,
+            "note": "初始标注",
+        },
+    ).json()
+    verified = client.post(f"/api/matches/{match_id}/events/{created['id']}/verify")
+    reviewer = replace_login(
+        client,
+        email="event-reviewer@example.com",
+        role=UserRole.COACH_ANALYST,
+    )
+
+    updated = client.patch(
+        f"/api/matches/{match_id}/events/{created['id']}",
+        json={"event_type": "goal", "timestamp_seconds": 44.5, "note": "确认是进球"},
+    )
+
+    assert verified.status_code == 200
+    assert verified.json()["status"] == "verified"
+    assert verified.json()["verified_at"] is not None
+    assert updated.status_code == 200
+    assert updated.json()["event_type"] == "goal"
+    assert updated.json()["timestamp_seconds"] == 44.5
+    assert updated.json()["note"] == "确认是进球"
+    assert updated.json()["updated_by_user_id"] == reviewer.id
+    assert updated.json()["status"] == "draft"
+    assert updated.json()["verified_at"] is None
+    assert updated.json()["verified_by_user_id"] is None
+
+
+def test_soft_deleted_event_disappears_and_releases_relations(client: TestClient) -> None:
+    match_id, home_id, _, player_id = create_match_and_player(client)
+    coach = replace_login(client, email="event-delete@example.com", role=UserRole.COACH_ANALYST)
+    video_id = create_video(match_id, coach.id)
+    created = client.post(
+        f"/api/matches/{match_id}/events",
+        json={
+            "video_id": video_id,
+            "event_type": "turnover",
+            "timestamp_seconds": 63,
+            "team_id": home_id,
+            "player_id": player_id,
+        },
+    ).json()
+
+    deleted = client.delete(f"/api/matches/{match_id}/events/{created['id']}")
+    listing = client.get(f"/api/matches/{match_id}/events")
+
+    assert deleted.status_code == 204
+    assert listing.status_code == 200
+    assert listing.json() == []
+    with TestingSessionLocal() as db:
+        stored = db.get(Event, created["id"])
+        assert stored is not None
+        assert stored.deleted_at is not None
+        assert stored.updated_by_user_id == coach.id
+
+    assert client.delete(f"/api/videos/{video_id}").status_code == 204
+    replace_login(client, email="delete-admin@example.com", role=UserRole.SYSTEM_ADMIN)
+    assert client.delete(f"/api/players/{player_id}").status_code == 204
+
+
+def test_athlete_cannot_modify_delete_or_verify_event(client: TestClient) -> None:
+    match_id, _, _, _ = create_match_and_player(client)
+    coach = replace_login(client, email="permission-coach@example.com", role=UserRole.COACH_ANALYST)
+    video_id = create_video(match_id, coach.id)
+    event_id = client.post(
+        f"/api/matches/{match_id}/events",
+        json={"video_id": video_id, "event_type": "timeout", "timestamp_seconds": 75},
+    ).json()["id"]
+    replace_login(client, email="permission-athlete@example.com", role=UserRole.ATHLETE)
+
+    assert client.patch(
+        f"/api/matches/{match_id}/events/{event_id}", json={"note": "越权修改"}
+    ).status_code == 403
+    assert client.delete(f"/api/matches/{match_id}/events/{event_id}").status_code == 403
+    assert client.post(f"/api/matches/{match_id}/events/{event_id}/verify").status_code == 403
+
+
+def test_event_list_filters_by_type_team_player_and_status(client: TestClient) -> None:
+    match_id, home_id, away_id, player_id = create_match_and_player(client)
+    coach = replace_login(client, email="filter-coach@example.com", role=UserRole.COACH_ANALYST)
+    video_id = create_video(match_id, coach.id)
+    home_goal = client.post(
+        f"/api/matches/{match_id}/events",
+        json={
+            "video_id": video_id,
+            "event_type": "goal",
+            "timestamp_seconds": 18,
+            "team_id": home_id,
+            "player_id": player_id,
+        },
+    ).json()
+    client.post(
+        f"/api/matches/{match_id}/events",
+        json={
+            "video_id": video_id,
+            "event_type": "timeout",
+            "timestamp_seconds": 120,
+            "team_id": away_id,
+        },
+    )
+    client.post(f"/api/matches/{match_id}/events/{home_goal['id']}/verify")
+
+    by_type = client.get(f"/api/matches/{match_id}/events?event_type=goal")
+    by_team = client.get(f"/api/matches/{match_id}/events?team_id={away_id}")
+    by_player = client.get(f"/api/matches/{match_id}/events?player_id={player_id}")
+    by_status = client.get(f"/api/matches/{match_id}/events?status=verified")
+
+    assert [item["event_type"] for item in by_type.json()] == ["goal"]
+    assert [item["team_id"] for item in by_team.json()] == [away_id]
+    assert [item["player_id"] for item in by_player.json()] == [player_id]
+    assert [item["id"] for item in by_status.json()] == [home_goal["id"]]

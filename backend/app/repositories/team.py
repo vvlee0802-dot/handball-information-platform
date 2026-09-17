@@ -42,7 +42,11 @@ def has_players_or_matches(db: Session, team_id: int) -> bool:
             )
         )
     )
-    has_events = db.scalar(select(exists().where(Event.team_id == team_id)))
+    has_events = db.scalar(
+        select(
+            exists().where(Event.team_id == team_id, Event.deleted_at.is_(None))
+        )
+    )
     return bool(has_players or has_matches or has_events)
 
 

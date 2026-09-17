@@ -65,6 +65,22 @@
 4. 后端验证视频属于当前比赛，球队参加当前比赛，球员属于参赛球队，时间戳没有超过视频时长。
 5. 页面刷新后从 PostgreSQL 重新读取事件，并按视频时间从早到晚展示；存在事件的视频和球员不能被误删除。
 
+## US4.2 本版改动
+
+1. 时间轴事件新增编辑操作，可以修改事件时间、类型、球队、球员和备注，并记录最后操作人。
+2. 修改已确认事件时自动撤销原确认状态，避免变更后的内容继续被误认为已审核。
+3. 新增事件确认操作，保存 `verified` 状态、确认时间和确认用户。
+4. 新增事件软删除操作；删除后的事件不再出现在列表中，也不再阻止对应视频或球员的后续管理。
+5. 所有修改、删除和确认接口继续执行 `upload_and_annotate_video` 权限校验，运动员无法绕过页面直接操作。
+
+## US4.3 本版改动
+
+1. 事件查询接口支持按事件类型、球队、球员和确认状态组合筛选，并继续按视频时间排序。
+2. 人工标注页面新增筛选面板，可清除条件或应用组合条件。
+3. 筛选结果同步显示当前事件总数、已确认数量和待确认数量。
+4. 每条事件新增“定位画面”操作，自动选择所属视频并跳转到事件时间。
+5. 跳转前同时检查事件视频是否存在和时间戳是否在视频范围内，异常数据会被阻止并显示明确提示。
+
 ## 需求文档
 
 当前正式需求文档为 [Handball AI Project Requirements v1.0](docs/Handball_AI_Project_Requirements_v1.0.docx)。该文件用于替代此前的旧版需求文件。
@@ -168,8 +184,8 @@ python -m pytest -q
 ```text
 ESLint                         Passed
 TypeScript type-check          Passed
-Frontend unit tests            34 passed
-Backend tests                  38 passed
+Frontend unit tests            36 passed
+Backend tests                  42 passed
 Production build               Passed
 ```
 
@@ -210,8 +226,8 @@ Production build               Passed
 
 - [x] US4.1 在视频时间轴上新增人工事件
 - [x] US4.1 事件关系校验与时间顺序展示
-- [ ] US4.2 修改、删除和确认事件
-- [ ] 事件筛选和视频跳转
+- [x] US4.2 修改、删除和确认事件
+- [x] US4.3 事件筛选、同步统计和视频跳转
 - [ ] 生成与导出事件片段
 
 ### Epic 5 AI Match Event Detection

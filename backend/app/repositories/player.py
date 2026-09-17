@@ -40,4 +40,13 @@ def delete_player(db: Session, player: Player) -> None:
 
 
 def has_events(db: Session, player_id: int) -> bool:
-    return bool(db.scalar(select(exists().where(Event.player_id == player_id))))
+    return bool(
+        db.scalar(
+            select(
+                exists().where(
+                    Event.player_id == player_id,
+                    Event.deleted_at.is_(None),
+                )
+            )
+        )
+    )

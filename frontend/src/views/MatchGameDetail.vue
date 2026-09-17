@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -7,8 +7,12 @@ import NotFoundPanel from '@/components/NotFoundPanel.vue'
 import { listCompetitions, type CompetitionRecord } from '@/services/competitions'
 import {
   createMatchEvent,
+  deleteMatchEvent,
   eventTypeLabels,
   listMatchEvents,
+  updateMatchEvent,
+  validateEventTimestamp,
+  verifyMatchEvent,
   type EventType,
   type MatchEventInput,
   type MatchEventRecord,
@@ -73,6 +77,10 @@ const selectedPlaybackVideoId = ref<number | null>(null)
 const videoPlayer = ref<HTMLVideoElement | null>(null)
 const currentVideoTime = ref(0)
 const eventSaving = ref(false)
+const editingEventId = ref<number | null>(null)
+const deletingEventId = ref<number | null>(null)
+const verifyingEventId = ref<number | null>(null)
+const pendingSeekTime = ref<number | null>(null)
 const eventError = ref('')
 const eventMessage = ref('')
 let videoPollTimer: ReturnType<typeof setTimeout> | null = null
@@ -97,6 +105,17 @@ const eventForm = reactive<MatchEventInput>({
   player_id: null,
   note: null,
 })
+const eventFilters = reactive<{
+  event_type: EventType | ''
+  team_id: number | null
+  player_id: number | null
+  status: 'draft' | 'verified' | ''
+}>({
+  event_type: '',
+  team_id: null,
+  player_id: null,
+  status: '',
+})
 const competition = computed(() =>
   competitions.value.find((x) => x.id === match.value?.competition_id),
 )
@@ -116,6 +135,16 @@ const selectablePlayers = computed(() =>
     ? participantPlayers.value
     : participantPlayers.value.filter((player) => player.team_id === eventForm.team_id),
 )
+const filterPlayers = computed(() =>
+  eventFilters.team_id === null
+    ? participantPlayers.value
+    : participantPlayers.value.filter((player) => player.team_id === eventFilters.team_id),
+)
+const eventStatistics = computed(() => ({
+  total: events.value.length,
+  verified: events.value.filter((event) => event.status === 'verified').length,
+  draft: events.value.filter((event) => event.status === 'draft').length,
+}))
 const scoresEnabled = computed(() => form.status === 'live' || form.status === 'completed')
 const processingLabels: Record<VideoProcessingStatus, string> = {
   queued: '等待处理',
@@ -237,13 +266,19 @@ const loadVideos = async () => {
 const loadEvents = async () => {
   if (!match.value || !authStore.hasPermission('view_authorized_video')) return
   try {
-    events.value = await listMatchEvents(match.value.id)
+    events.value = await listMatchEvents(match.value.id, {
+      event_type: eventFilters.event_type || undefined,
+      team_id: eventFilters.team_id ?? undefined,
+      player_id: eventFilters.player_id ?? undefined,
+      status: eventFilters.status || undefined,
+    })
   } catch (e) {
     eventError.value = e instanceof Error ? e.message : '事件记录加载失败'
   }
 }
 
 const selectPlaybackVideo = (video: VideoRecord) => {
+  editingEventId.value = null
   selectedPlaybackVideoId.value = video.id
   eventForm.video_id = video.id
   eventForm.timestamp_seconds = 0
@@ -255,6 +290,33 @@ const selectPlaybackVideo = (video: VideoRecord) => {
 const updateCurrentVideoTime = () => {
   currentVideoTime.value = videoPlayer.value?.currentTime ?? 0
   eventForm.timestamp_seconds = Number(currentVideoTime.value.toFixed(3))
+}
+
+const seekFromEventTimestamp = () => {
+  if (!videoPlayer.value) return
+  const duration = videoPlayer.value.duration
+  const requestedTime = Math.max(0, Number(eventForm.timestamp_seconds) || 0)
+  const safeTime = Number.isFinite(duration) ? Math.min(requestedTime, duration) : requestedTime
+  videoPlayer.value.currentTime = safeTime
+  currentVideoTime.value = safeTime
+  eventForm.timestamp_seconds = Number(safeTime.toFixed(3))
+}
+
+const applyPendingSeek = () => {
+  if (pendingSeekTime.value === null || !videoPlayer.value || videoPlayer.value.readyState === 0)
+    return
+  const validationError = validateEventTimestamp(
+    pendingSeekTime.value,
+    Number.isFinite(videoPlayer.value.duration) ? videoPlayer.value.duration : null,
+  )
+  if (validationError) {
+    eventError.value = validationError
+    pendingSeekTime.value = null
+    return
+  }
+  eventForm.timestamp_seconds = pendingSeekTime.value
+  seekFromEventTimestamp()
+  pendingSeekTime.value = null
 }
 
 const handlePlayerSelection = () => {
@@ -272,19 +334,78 @@ watch(
   },
 )
 
+watch(
+  () => eventFilters.team_id,
+  (teamId) => {
+    if (eventFilters.player_id === null) return
+    const player = participantPlayers.value.find((item) => item.id === eventFilters.player_id)
+    if (!player || (teamId !== null && player.team_id !== teamId)) {
+      eventFilters.player_id = null
+    }
+  },
+)
+
+const resetEventFilters = async () => {
+  eventFilters.event_type = ''
+  eventFilters.team_id = null
+  eventFilters.player_id = null
+  eventFilters.status = ''
+  await loadEvents()
+}
+
+const showEventInPlayer = async (event: MatchEventRecord): Promise<boolean> => {
+  const video = videos.value.find((item) => item.id === event.video_id)
+  if (!video) {
+    eventError.value = '该事件关联的视频当前不可用。'
+    return false
+  }
+  const validationError = validateEventTimestamp(event.timestamp_seconds, video.duration_seconds)
+  if (validationError) {
+    eventError.value = validationError
+    return false
+  }
+  selectedPlaybackVideoId.value = video.id
+  editingEventId.value = null
+  eventForm.video_id = video.id
+  eventForm.timestamp_seconds = event.timestamp_seconds
+  currentVideoTime.value = event.timestamp_seconds
+  pendingSeekTime.value = event.timestamp_seconds
+  eventError.value = ''
+  eventMessage.value = ''
+  await nextTick()
+  applyPendingSeek()
+  videoPlayer.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  return true
+}
+
+const jumpToEvent = async (event: MatchEventRecord) => {
+  await showEventInPlayer(event)
+}
+
 const submitEvent = async () => {
   if (!match.value || !playbackVideo.value) return
-  updateCurrentVideoTime()
   eventSaving.value = true
   eventError.value = ''
   eventMessage.value = ''
   try {
-    await createMatchEvent(match.value.id, {
-      ...eventForm,
-      video_id: playbackVideo.value.id,
+    const payload = {
+      event_type: eventForm.event_type,
+      timestamp_seconds: eventForm.timestamp_seconds,
+      team_id: eventForm.team_id,
+      player_id: eventForm.player_id,
       note: eventForm.note?.trim() || null,
-    })
-    eventMessage.value = `已在 ${formatDuration(eventForm.timestamp_seconds)} 保存人工事件。`
+    }
+    if (editingEventId.value === null) {
+      await createMatchEvent(match.value.id, {
+        video_id: playbackVideo.value.id,
+        ...payload,
+      })
+      eventMessage.value = `已在 ${formatDuration(eventForm.timestamp_seconds)} 保存人工事件。`
+    } else {
+      await updateMatchEvent(match.value.id, editingEventId.value, payload)
+      eventMessage.value = `已更新 ${formatDuration(eventForm.timestamp_seconds)} 的事件，状态回到待确认。`
+      editingEventId.value = null
+    }
     eventForm.event_type = 'goal'
     eventForm.team_id = null
     eventForm.player_id = null
@@ -294,6 +415,59 @@ const submitEvent = async () => {
     eventError.value = e instanceof Error ? e.message : '事件保存失败'
   } finally {
     eventSaving.value = false
+  }
+}
+
+const startEditEvent = async (event: MatchEventRecord) => {
+  if (!(await showEventInPlayer(event))) return
+  editingEventId.value = event.id
+  eventForm.event_type = event.event_type
+  eventForm.timestamp_seconds = event.timestamp_seconds
+  eventForm.team_id = event.team_id
+  eventForm.player_id = event.player_id
+  eventForm.note = event.note
+}
+
+const cancelEventEdit = () => {
+  editingEventId.value = null
+  eventForm.event_type = 'goal'
+  eventForm.timestamp_seconds = Number(currentVideoTime.value.toFixed(3))
+  eventForm.team_id = null
+  eventForm.player_id = null
+  eventForm.note = null
+  eventError.value = ''
+  eventMessage.value = ''
+}
+
+const removeEvent = async (event: MatchEventRecord) => {
+  if (!match.value) return
+  if (!window.confirm(`确定删除 ${formatDuration(event.timestamp_seconds)} 的事件吗？`)) return
+  deletingEventId.value = event.id
+  eventError.value = ''
+  try {
+    await deleteMatchEvent(match.value.id, event.id)
+    if (editingEventId.value === event.id) cancelEventEdit()
+    eventMessage.value = '事件已删除，不再参与后续统计或导出。'
+    await loadEvents()
+  } catch (e) {
+    eventError.value = e instanceof Error ? e.message : '事件删除失败'
+  } finally {
+    deletingEventId.value = null
+  }
+}
+
+const confirmEvent = async (event: MatchEventRecord) => {
+  if (!match.value) return
+  verifyingEventId.value = event.id
+  eventError.value = ''
+  try {
+    await verifyMatchEvent(match.value.id, event.id)
+    eventMessage.value = `已确认 ${formatDuration(event.timestamp_seconds)} 的事件。`
+    await loadEvents()
+  } catch (e) {
+    eventError.value = e instanceof Error ? e.message : '事件确认失败'
+  } finally {
+    verifyingEventId.value = null
   }
 }
 
@@ -745,6 +919,8 @@ onUnmounted(() => {
           </div>
           <span class="meta-chip">{{ events.length }} 条事件</span>
         </div>
+        <p v-if="eventError" class="error annotation-global-message">{{ eventError }}</p>
+        <p v-if="eventMessage" class="success annotation-global-message">{{ eventMessage }}</p>
 
         <div v-if="playbackVideo" class="annotation-workspace">
           <div class="annotation-player-panel">
@@ -756,6 +932,7 @@ onUnmounted(() => {
               controls
               preload="metadata"
               :src="getVideoContentUrl(playbackVideo.id)"
+              @loadedmetadata="applyPendingSeek"
               @timeupdate="updateCurrentVideoTime"
               @seeked="updateCurrentVideoTime"
             >
@@ -773,6 +950,25 @@ onUnmounted(() => {
             class="event-form"
             @submit.prevent="submitEvent"
           >
+            <div v-if="editingEventId !== null" class="event-edit-heading">
+              <strong>正在修改事件 #{{ editingEventId }}</strong>
+              <button class="button button-secondary" type="button" @click="cancelEventEdit">
+                取消修改
+              </button>
+            </div>
+            <div class="field">
+              <label for="event-timestamp">事件时间（秒）</label>
+              <input
+                id="event-timestamp"
+                v-model.number="eventForm.timestamp_seconds"
+                type="number"
+                min="0"
+                :max="playbackVideo.duration_seconds ?? undefined"
+                step="0.001"
+                required
+                @change="seekFromEventTimestamp"
+              />
+            </div>
             <div class="field">
               <label for="event-type">事件类型</label>
               <select id="event-type" v-model="eventForm.event_type" required>
@@ -816,10 +1012,14 @@ onUnmounted(() => {
                 placeholder="例如：快攻右侧射门"
               />
             </div>
-            <p v-if="eventError" class="error">{{ eventError }}</p>
-            <p v-if="eventMessage" class="success">{{ eventMessage }}</p>
             <button class="button button-primary" type="submit" :disabled="eventSaving">
-              {{ eventSaving ? '正在保存…' : `保存 ${formatDuration(currentVideoTime)} 事件` }}
+              {{
+                eventSaving
+                  ? '正在保存…'
+                  : editingEventId === null
+                    ? `保存 ${formatDuration(eventForm.timestamp_seconds)} 事件`
+                    : '保存事件修改'
+              }}
             </button>
           </form>
           <div v-else class="video-access-note">
@@ -830,9 +1030,60 @@ onUnmounted(() => {
           请先在上方选择一段处理完成的视频，点击“播放并标注”。
         </div>
 
+        <form class="event-filter-form" @submit.prevent="loadEvents">
+          <div class="filter-grid">
+            <div class="field">
+              <label for="filter-event-type">事件类型</label>
+              <select id="filter-event-type" v-model="eventFilters.event_type">
+                <option value="">全部类型</option>
+                <option v-for="(label, value) in eventTypeLabels" :key="value" :value="value">
+                  {{ label }}
+                </option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="filter-event-team">球队</label>
+              <select id="filter-event-team" v-model="eventFilters.team_id">
+                <option :value="null">全部球队</option>
+                <option v-if="home" :value="home.id">{{ home.name }}</option>
+                <option v-if="away" :value="away.id">{{ away.name }}</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="filter-event-player">球员</label>
+              <select id="filter-event-player" v-model="eventFilters.player_id">
+                <option :value="null">全部球员</option>
+                <option v-for="player in filterPlayers" :key="player.id" :value="player.id">
+                  {{ player.number }}号 · {{ player.name }}
+                </option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="filter-event-status">确认状态</label>
+              <select id="filter-event-status" v-model="eventFilters.status">
+                <option value="">全部状态</option>
+                <option value="draft">待确认</option>
+                <option value="verified">已确认</option>
+              </select>
+            </div>
+          </div>
+          <div class="filter-actions">
+            <button class="button button-secondary" type="button" @click="resetEventFilters">
+              清除筛选
+            </button>
+            <button class="button button-primary" type="submit">应用筛选</button>
+          </div>
+        </form>
+
+        <div class="event-statistics" aria-live="polite">
+          <div><span>当前结果</span><strong>{{ eventStatistics.total }}</strong></div>
+          <div><span>已确认</span><strong>{{ eventStatistics.verified }}</strong></div>
+          <div><span>待确认</span><strong>{{ eventStatistics.draft }}</strong></div>
+        </div>
+
         <div class="event-list-heading">
           <h3>时间轴事件</h3>
-          <span>按视频时间从早到晚排列</span>
+          <span>筛选结果按视频时间从早到晚排列</span>
         </div>
         <div v-if="events.length === 0" class="video-empty">还没有人工事件标注。</div>
         <ol v-else class="event-list">
@@ -849,7 +1100,48 @@ onUnmounted(() => {
               </span>
               <p v-if="event.note">{{ event.note }}</p>
             </div>
-            <span class="status-badge status-neutral">{{ event.source }}</span>
+            <div class="event-actions">
+              <span
+                class="status-badge"
+                :class="event.status === 'verified' ? 'status-ready' : 'status-neutral'"
+              >
+                {{ event.status === 'verified' ? '已确认' : '待确认' }}
+              </span>
+              <button
+                class="button button-secondary"
+                type="button"
+                @click="jumpToEvent(event)"
+              >
+                定位画面
+              </button>
+              <template v-if="authStore.hasPermission('upload_and_annotate_video')">
+                <button
+                  class="button button-secondary"
+                  type="button"
+                  :disabled="eventSaving || deletingEventId === event.id"
+                  @click="startEditEvent(event)"
+                >
+                  编辑
+                </button>
+                <button
+                  v-if="event.status !== 'verified'"
+                  class="button button-primary"
+                  type="button"
+                  :disabled="verifyingEventId === event.id"
+                  @click="confirmEvent(event)"
+                >
+                  {{ verifyingEventId === event.id ? '确认中…' : '确认' }}
+                </button>
+                <button
+                  class="button button-danger"
+                  type="button"
+                  :disabled="deletingEventId === event.id"
+                  @click="removeEvent(event)"
+                >
+                  {{ deletingEventId === event.id ? '删除中…' : '删除' }}
+                </button>
+              </template>
+            </div>
           </li>
         </ol>
       </section>
@@ -915,6 +1207,7 @@ onUnmounted(() => {
 .video-empty,
 .video-access-note { margin-top: 20px; padding: 18px; border-radius: 12px; color: var(--muted-strong); background: var(--surface-soft); }
 .annotation-section { margin-top: 20px; }
+.annotation-global-message { margin: 16px 0 0; }
 .annotation-workspace { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr); gap: 22px; margin-top: 22px; }
 .annotation-player-panel,
 .event-form { padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
@@ -924,7 +1217,14 @@ onUnmounted(() => {
 .annotation-time small { color: var(--muted); }
 .annotation-time strong { color: var(--primary-dark); font-size: 22px; }
 .event-form { display: grid; align-content: start; gap: 14px; }
+.event-edit-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 .event-form textarea { width: 100%; resize: vertical; }
+.event-filter-form { margin-top: 26px; padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
+.event-filter-form .filter-actions { margin-top: 14px; }
+.event-statistics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.event-statistics div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; border: 1px solid var(--border); border-radius: 12px; }
+.event-statistics span { color: var(--muted); font-size: 13px; }
+.event-statistics strong { color: var(--primary-dark); font-size: 20px; }
 .event-list-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-top: 28px; }
 .event-list-heading h3 { margin: 0; }
 .event-list-heading span { color: var(--muted); font-size: 13px; }
@@ -934,6 +1234,8 @@ onUnmounted(() => {
 .event-list li > div { display: grid; gap: 5px; }
 .event-list li > div span { color: var(--muted); font-size: 13px; }
 .event-list p { margin: 0; color: var(--muted-strong); }
+.event-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
+.event-actions .button { padding: 6px 10px; }
 @media (max-width: 620px) {
   .detail-actions {
     align-items: flex-start;
@@ -944,7 +1246,9 @@ onUnmounted(() => {
   .video-metadata-row,
   .processing-failure { align-items: flex-start; flex-direction: column; }
   .annotation-workspace { grid-template-columns: 1fr; }
+  .event-statistics { grid-template-columns: 1fr; }
   .event-list li { grid-template-columns: 68px 1fr; }
   .event-list li > .status-badge { grid-column: 2; justify-self: start; }
+  .event-actions { grid-column: 2; justify-content: flex-start; }
 }
 </style>

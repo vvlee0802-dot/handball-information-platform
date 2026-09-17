@@ -39,6 +39,15 @@ export interface MatchEventInput {
   note: string | null
 }
 
+export type MatchEventUpdate = Partial<Omit<MatchEventInput, 'video_id'>>
+
+export interface MatchEventFilters {
+  event_type?: EventType
+  team_id?: number
+  player_id?: number
+  status?: 'draft' | 'verified'
+}
+
 export const eventTypeLabels: Record<EventType, string> = {
   goal: '进球',
   shot: '射门',
@@ -51,11 +60,47 @@ export const eventTypeLabels: Record<EventType, string> = {
   other: '其他',
 }
 
-export const listMatchEvents = (matchId: number) =>
-  apiRequest<MatchEventRecord[]>(`/api/matches/${matchId}/events`)
+export const listMatchEvents = (matchId: number, filters: MatchEventFilters = {}) => {
+  const query = new URLSearchParams()
+  if (filters.event_type) query.set('event_type', filters.event_type)
+  if (filters.team_id) query.set('team_id', String(filters.team_id))
+  if (filters.player_id) query.set('player_id', String(filters.player_id))
+  if (filters.status) query.set('status', filters.status)
+  const suffix = query.size > 0 ? `?${query.toString()}` : ''
+  return apiRequest<MatchEventRecord[]>(`/api/matches/${matchId}/events${suffix}`)
+}
+
+export const validateEventTimestamp = (
+  timestampSeconds: number,
+  durationSeconds: number | null,
+): string | null => {
+  if (!Number.isFinite(timestampSeconds) || timestampSeconds < 0) return '事件时间戳无效。'
+  if (durationSeconds !== null && timestampSeconds > durationSeconds) {
+    return '事件时间超过视频时长，无法跳转。'
+  }
+  return null
+}
 
 export const createMatchEvent = (matchId: number, input: MatchEventInput) =>
   apiRequest<MatchEventRecord>(`/api/matches/${matchId}/events`, {
     method: 'POST',
     body: JSON.stringify(input),
+  })
+
+export const updateMatchEvent = (
+  matchId: number,
+  eventId: number,
+  input: MatchEventUpdate,
+) =>
+  apiRequest<MatchEventRecord>(`/api/matches/${matchId}/events/${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+
+export const deleteMatchEvent = (matchId: number, eventId: number) =>
+  apiRequest<void>(`/api/matches/${matchId}/events/${eventId}`, { method: 'DELETE' })
+
+export const verifyMatchEvent = (matchId: number, eventId: number) =>
+  apiRequest<MatchEventRecord>(`/api/matches/${matchId}/events/${eventId}/verify`, {
+    method: 'POST',
   })
