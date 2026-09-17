@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  calculateChunkCount,
+  createVideoFingerprint,
   formatBytes,
   retryVideoProcessing,
   validateVideoFile,
@@ -12,6 +14,7 @@ const policy: VideoUploadPolicy = {
   accepted_extensions: ['.mp4'],
   accepted_content_types: ['application/mp4', 'video/mp4'],
   max_size_bytes: 32,
+  chunk_size_bytes: 8,
 }
 
 describe('video upload validation', () => {
@@ -54,5 +57,15 @@ describe('video upload validation', () => {
       '/api/videos/7/retry',
       expect.objectContaining({ method: 'POST', credentials: 'include' }),
     )
+  })
+
+  it('builds a stable file fingerprint and upload plan for resuming', () => {
+    const file = new File(['0123456789abcdef'], 'match.mp4', {
+      type: 'video/mp4',
+      lastModified: 123456,
+    })
+
+    expect(createVideoFingerprint(file)).toBe('match.mp4:16:123456')
+    expect(calculateChunkCount(file.size, policy.chunk_size_bytes)).toBe(2)
   })
 })

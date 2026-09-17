@@ -19,7 +19,7 @@ import {
   getVideoUploadPolicy,
   listMatchVideos,
   retryVideoProcessing,
-  uploadMatchVideo,
+  uploadMatchVideoResumable,
   validateVideoFile,
   type VideoRecord,
   type VideoProcessingStatus,
@@ -47,6 +47,7 @@ const uploadProgress = ref(0)
 const uploading = ref(false)
 const retryingVideoId = ref<number | null>(null)
 let videoPollTimer: ReturnType<typeof setTimeout> | null = null
+let activeUploadController: AbortController | null = null
 const form = reactive<MatchInput>({
   competition_id: 0,
   home_team_id: 0,
@@ -192,22 +193,39 @@ const submitVideo = async () => {
   }
 
   uploading.value = true
+  activeUploadController = new AbortController()
   uploadProgress.value = 0
   videoError.value = ''
   videoMessage.value = ''
   try {
-    await uploadMatchVideo(match.value.id, selectedVideo.value, (percent) => {
-      uploadProgress.value = percent
+    await uploadMatchVideoResumable(match.value.id, selectedVideo.value, {
+      signal: activeUploadController.signal,
+      onProgress: (percent) => {
+        uploadProgress.value = percent
+      },
+      onResume: (uploadedParts, percent) => {
+        videoMessage.value = `检测到 ${uploadedParts} 个已上传分片，从 ${percent}% 继续。`
+      },
     })
     videoMessage.value = '录像上传成功，已经与本场比赛关联。'
     selectedVideo.value = null
     if (videoInput.value) videoInput.value.value = ''
     await loadVideos()
   } catch (e) {
-    videoError.value = e instanceof Error ? e.message : '视频上传失败'
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      videoMessage.value = '上传已取消，服务器临时分片已清理。'
+    } else {
+      const reason = e instanceof Error ? e.message : '视频上传失败'
+      videoError.value = `${reason} 重新选择同一个文件即可从已完成的分片继续。`
+    }
   } finally {
     uploading.value = false
+    activeUploadController = null
   }
+}
+
+const cancelUpload = () => {
+  activeUploadController?.abort()
 }
 
 const retryProcessing = async (video: VideoRecord) => {
@@ -241,6 +259,7 @@ watch(
 onMounted(load)
 onUnmounted(() => {
   if (videoPollTimer) clearTimeout(videoPollTimer)
+  activeUploadController?.abort()
 })
 </script>
 
@@ -384,7 +403,7 @@ onUnmounted(() => {
             <h2 class="section-title">比赛录像</h2>
             <p class="page-description">
               MP4 · 推荐 H.264 · 1080p；单文件上限
-              {{ uploadPolicy ? formatBytes(uploadPolicy.max_size_bytes) : '10 GiB' }}。
+              {{ uploadPolicy ? formatBytes(uploadPolicy.max_size_bytes) : '10 GiB' }}；支持断点续传。
             </p>
           </div>
           <span v-if="videos.length" class="meta-chip">{{ videos.length }} 个视频</span>
@@ -427,6 +446,14 @@ onUnmounted(() => {
                 :disabled="uploading || !selectedVideo || Boolean(videoError)"
               >
                 {{ uploading ? '正在上传…' : '上传并关联比赛' }}
+              </button>
+              <button
+                v-if="uploading"
+                class="button button-secondary"
+                type="button"
+                @click="cancelUpload"
+              >
+                取消上传
               </button>
             </div>
           </form>

@@ -28,3 +28,4 @@ class VideoUploadPolicy(BaseModel):
     accepted_extensions: list[str]
     accepted_content_types: list[str]
     max_size_bytes: int
+    chunk_size_bytes: int

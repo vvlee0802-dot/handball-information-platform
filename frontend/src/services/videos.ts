@@ -24,6 +24,33 @@ export interface VideoUploadPolicy {
   accepted_extensions: string[]
   accepted_content_types: string[]
   max_size_bytes: number
+  chunk_size_bytes: number
+}
+
+export interface VideoUploadPart {
+  part_number: number
+  size_bytes: number
+  checksum_sha256: string
+}
+
+export interface VideoUploadSession {
+  id: string
+  match_id: number
+  original_filename: string
+  total_size: number
+  chunk_size: number
+  total_parts: number
+  status: 'uploading' | 'assembling' | 'completed' | 'cancelled' | 'failed'
+  uploaded_parts: VideoUploadPart[]
+  video_id: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ResumableUploadOptions {
+  signal?: AbortSignal
+  onProgress: (percent: number) => void
+  onResume?: (uploadedParts: number, percent: number) => void
 }
 
 export const getVideoUploadPolicy = () =>
@@ -69,30 +96,133 @@ const readUploadError = (xhr: XMLHttpRequest) => {
   }
 }
 
-export const uploadMatchVideo = (
-  matchId: number,
-  file: File,
-  onProgress: (percent: number) => void,
+export const createVideoFingerprint = (file: File) =>
+  `${file.name}:${file.size}:${file.lastModified}`
+
+export const calculateChunkCount = (fileSize: number, chunkSize: number) =>
+  Math.ceil(fileSize / chunkSize)
+
+const calculateSha256 = async (chunk: Blob) => {
+  const digest = await crypto.subtle.digest('SHA-256', await chunk.arrayBuffer())
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+const uploadPartOnce = (
+  sessionId: string,
+  partNumber: number,
+  chunk: Blob,
+  checksum: string,
+  signal: AbortSignal | undefined,
+  onProgress: (loaded: number) => void,
 ) =>
-  new Promise<VideoRecord>((resolve, reject) => {
+  new Promise<VideoUploadPart>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('PUT', `/api/matches/${matchId}/videos`)
+    xhr.open('PUT', `/api/video-uploads/${sessionId}/parts/${partNumber}`)
     xhr.withCredentials = true
     xhr.setRequestHeader('Accept', 'application/json')
-    xhr.setRequestHeader('Content-Type', file.type || 'video/mp4')
-    xhr.setRequestHeader('X-Original-Filename', encodeURIComponent(file.name))
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+    xhr.setRequestHeader('X-Chunk-SHA256', checksum)
     xhr.upload.addEventListener('progress', (event) => {
-      if (event.lengthComputable && event.total > 0) {
-        onProgress(Math.round((event.loaded / event.total) * 100))
-      }
+      if (event.lengthComputable) onProgress(event.loaded)
     })
     xhr.addEventListener('load', () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(JSON.parse(xhr.responseText) as VideoRecord)
+        resolve(JSON.parse(xhr.responseText) as VideoUploadPart)
         return
       }
       reject(new ApiError(readUploadError(xhr), xhr.status))
     })
-    xhr.addEventListener('error', () => reject(new Error('网络连接中断，视频上传失败。')))
-    xhr.send(file)
+    xhr.addEventListener('error', () => reject(new Error('网络连接中断，当前分片上传失败。')))
+    xhr.addEventListener('abort', () => reject(new DOMException('上传已取消', 'AbortError')))
+    const abort = () => xhr.abort()
+    signal?.addEventListener('abort', abort, { once: true })
+    xhr.addEventListener('loadend', () => signal?.removeEventListener('abort', abort))
+    xhr.send(chunk)
   })
+
+const uploadPartWithRetry = async (
+  sessionId: string,
+  partNumber: number,
+  chunk: Blob,
+  checksum: string,
+  signal: AbortSignal | undefined,
+  onProgress: (loaded: number) => void,
+) => {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await uploadPartOnce(
+        sessionId,
+        partNumber,
+        chunk,
+        checksum,
+        signal,
+        onProgress,
+      )
+    } catch (error) {
+      lastError = error
+      if (signal?.aborted || (error instanceof ApiError && error.status < 500)) throw error
+    }
+  }
+  throw lastError
+}
+
+export const cancelVideoUpload = (sessionId: string) =>
+  apiRequest<VideoUploadSession>(`/api/video-uploads/${sessionId}`, { method: 'DELETE' })
+
+export const uploadMatchVideoResumable = async (
+  matchId: number,
+  file: File,
+  options: ResumableUploadOptions,
+): Promise<VideoRecord> => {
+  let session: VideoUploadSession | null = null
+  try {
+    session = await apiRequest<VideoUploadSession>(`/api/matches/${matchId}/video-uploads`, {
+      method: 'POST',
+      signal: options.signal,
+      body: JSON.stringify({
+        original_filename: file.name,
+        content_type: file.type || 'video/mp4',
+        total_size: file.size,
+        fingerprint: createVideoFingerprint(file),
+      }),
+    })
+
+    const uploadedPartNumbers = new Set(session.uploaded_parts.map((part) => part.part_number))
+    let completedBytes = session.uploaded_parts.reduce((total, part) => total + part.size_bytes, 0)
+    const resumedPercent = Math.round((completedBytes / file.size) * 100)
+    if (uploadedPartNumbers.size > 0) {
+      options.onResume?.(uploadedPartNumbers.size, resumedPercent)
+      options.onProgress(resumedPercent)
+    }
+
+    for (let partNumber = 1; partNumber <= session.total_parts; partNumber += 1) {
+      if (uploadedPartNumbers.has(partNumber)) continue
+      if (options.signal?.aborted) throw new DOMException('上传已取消', 'AbortError')
+      const start = (partNumber - 1) * session.chunk_size
+      const end = Math.min(start + session.chunk_size, file.size)
+      const chunk = file.slice(start, end)
+      const checksum = await calculateSha256(chunk)
+      await uploadPartWithRetry(
+        session.id,
+        partNumber,
+        chunk,
+        checksum,
+        options.signal,
+        (loaded) => options.onProgress(Math.round(((completedBytes + loaded) / file.size) * 100)),
+      )
+      completedBytes += chunk.size
+      options.onProgress(Math.round((completedBytes / file.size) * 100))
+    }
+
+    return await apiRequest<VideoRecord>(`/api/video-uploads/${session.id}/complete`, {
+      method: 'POST',
+      signal: options.signal,
+    })
+  } catch (error) {
+    if (options.signal?.aborted && session !== null) {
+      await cancelVideoUpload(session.id).catch(() => undefined)
+    }
+    throw error
+  }
+}

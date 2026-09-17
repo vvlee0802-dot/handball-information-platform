@@ -1,6 +1,6 @@
 # Handball Information Platform
 
-手球信息与比赛分析平台。目前已完成 Epic 1、Epic 2，以及 Epic 3 的 US3.1 比赛视频上传。
+手球信息与比赛分析平台。目前已完成 Epic 1、Epic 2，以及 Epic 3 的 US3.1-US3.3 比赛视频上传与恢复。
 
 用户可以通过赛事、比赛、球队、球员或场馆查找信息。主要页面的数据由 FastAPI 从 PostgreSQL 读取；具备权限的教练或分析师可以为指定比赛上传 MP4 录像。AI 事件识别、视频审核和自动剪辑仍属于后续开发范围。
 
@@ -41,6 +41,14 @@
 4. 比赛详情页自动轮询仍在处理的视频，进入最终状态后停止轮询。
 5. 处理失败时保存并展示可理解的中文原因，具备权限的用户可以重新提交处理任务。
 
+## US3.3 本版改动
+
+1. 将大视频按默认 8 MiB 拆分上传，并为每个分片计算 SHA-256 摘要，服务端校验大小与内容完整性。
+2. 新增上传会话和分片记录；重新选择同一个文件时，前端读取已完成分片并从中断位置继续。
+3. 单个分片因网络或服务端故障失败时最多自动重试 3 次，已经成功的分片不会重复上传。
+4. 全部分片到达后，后端按顺序流式合并为 MP4，再进入 US3.2 的后台完整性检查流程。
+5. 上传界面新增取消操作；取消后会话标记为 `cancelled`，数据库分片记录和服务器临时文件都会被清理。
+
 ## 需求文档
 
 当前正式需求文档为 [Handball AI Project Requirements v1.0](docs/Handball_AI_Project_Requirements_v1.0.docx)。该文件用于替代此前的旧版需求文件。
@@ -71,6 +79,8 @@
 - `AuthSession`：服务端会话，只保存随机会话令牌的摘要
 - `UserPermission`：用户在角色默认权限之外获得的可配置权限
 - `Video`：比赛录像元数据，通过 `match_id` 关联比赛，文件本体保存在可配置存储目录
+- `VideoUploadSession`：可恢复上传会话，记录文件指纹、分片方案、所属用户和上传状态
+- `VideoUploadPart`：已成功接收的分片元数据，用于续传、去重和完整性校验
 
 所有实体均使用稳定 ID 建立关系，避免使用显示名称作为数据关联依据。
 
@@ -139,8 +149,8 @@ python -m pytest -q
 ```text
 ESLint                         Passed
 TypeScript type-check          Passed
-Frontend unit tests            24 passed
-Backend tests                  25 passed
+Frontend unit tests            25 passed
+Backend tests                  28 passed
 Production build               Passed
 ```
 
@@ -171,6 +181,8 @@ Production build               Passed
 - [x] US3.1 视频与比赛记录关联
 - [x] US3.2 上传进度和错误状态
 - [x] US3.2 视频处理状态管理
+- [x] US3.3 分片上传和断点续传
+- [x] US3.3 单分片重试和取消清理
 
 ### Epic 4 Event Review and Video Clips
 
@@ -204,9 +216,9 @@ Production build               Passed
 
 ## 当前范围说明
 
-当前版本已经支持在比赛详情页上传 MP4 录像并持久保存其关联记录。
+当前版本已经支持在比赛详情页分片上传 MP4 录像、恢复中断上传，并持久保存其比赛关联记录。
 
-断点续传、对象存储分片、视频处理和 AI 分析仍属于后续 US 与 Epic，将在后续开发中逐步实现。
+目前视频本体与临时分片保存在 `VIDEO_UPLOAD_DIR` 指向的本地目录；切换为云端对象存储、正式转码队列和 AI 分析仍属于后续 US 与 Epic。
 
 ## License
 

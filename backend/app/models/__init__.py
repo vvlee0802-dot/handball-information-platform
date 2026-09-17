@@ -7,6 +7,7 @@ from app.models.venue import Venue
 from app.models.user import User
 from app.models.user_permission import UserPermission
 from app.models.video import Video
+from app.models.video_upload import VideoUploadPart, VideoUploadSession
 
 __all__ = [
     "AuthSession",
@@ -18,4 +19,6 @@ __all__ = [
     "UserPermission",
     "Venue",
     "Video",
+    "VideoUploadPart",
+    "VideoUploadSession",
 ]

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     session_max_age_seconds: int = 60 * 60 * 24 * 7
     session_cookie_secure: bool = False
     video_upload_max_bytes: int = 10 * 1024**3
+    video_upload_chunk_bytes: int = 8 * 1024**2
     video_upload_dir: Path = PROJECT_ROOT / "backend" / "uploads"
 
     model_config = SettingsConfigDict(
