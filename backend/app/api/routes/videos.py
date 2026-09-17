@@ -3,7 +3,7 @@ from typing import Annotated
 from urllib.parse import unquote
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import UploadVideoUser, ViewAuthorizedVideoUser
@@ -12,6 +12,7 @@ from app.db.session import get_db
 from app.repositories import match as matches
 from app.repositories import video as videos
 from app.schemas.video import VideoRead, VideoUploadPolicy
+from app.services.video_processing import process_video
 
 
 router = APIRouter(tags=["videos"])
@@ -63,6 +64,7 @@ def list_match_videos(
 async def upload_match_video(
     match_id: int,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: DatabaseSession,
     current_user: UploadVideoUser,
     x_original_filename: Annotated[str | None, Header()] = None,
@@ -111,7 +113,7 @@ async def upload_match_video(
 
         temporary_path.replace(final_path)
         try:
-            return videos.create_video(
+            video = videos.create_video(
                 db,
                 match_id=match_id,
                 uploaded_by_user_id=current_user.id,
@@ -120,9 +122,36 @@ async def upload_match_video(
                 content_type=content_type,
                 size_bytes=total_bytes,
             )
+            background_tasks.add_task(process_video, video.id, db.get_bind())
+            return video
         except Exception:
             final_path.unlink(missing_ok=True)
             raise
     except Exception:
         temporary_path.unlink(missing_ok=True)
         raise
+
+
+@router.post(
+    "/api/videos/{video_id}/retry",
+    response_model=VideoRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def retry_video_processing(
+    video_id: int,
+    background_tasks: BackgroundTasks,
+    db: DatabaseSession,
+    _current_user: UploadVideoUser,
+) -> VideoRead:
+    video = videos.get_video(db, video_id)
+    if video is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    if video.processing_status != "failed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only failed video processing tasks can be retried",
+        )
+
+    queued_video = videos.queue_video_for_retry(db, video)
+    background_tasks.add_task(process_video, queued_video.id, db.get_bind())
+    return queued_video

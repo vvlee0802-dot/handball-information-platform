@@ -12,6 +12,13 @@ class VideoRead(BaseModel):
     content_type: str
     size_bytes: int
     status: Literal["uploaded"]
+    processing_status: Literal["queued", "processing", "completed", "failed"]
+    processing_progress: int
+    processing_attempts: int
+    failure_reason: str | None
+    checksum_sha256: str | None
+    processing_started_at: datetime | None
+    processing_completed_at: datetime | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

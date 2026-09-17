@@ -33,6 +33,14 @@
 4. 新增视频数据表，记录所属比赛、上传用户、原始文件名、文件大小、存储位置和 uploaded 状态。
 5. 上传成功后，比赛详情页显示关联视频；刷新页面后仍从 PostgreSQL 读取该关联记录。
 
+## US3.2 本版改动
+
+1. 上传过程中实时显示浏览器已上传百分比。
+2. 新增 queued、processing、completed 和 failed 四种后台处理状态及处理进度。
+3. 后台任务检查文件存在性、MP4 容器和记录大小，并计算 SHA-256 完整性摘要。
+4. 比赛详情页自动轮询仍在处理的视频，进入最终状态后停止轮询。
+5. 处理失败时保存并展示可理解的中文原因，具备权限的用户可以重新提交处理任务。
+
 ## 需求文档
 
 当前正式需求文档为 [Handball AI Project Requirements v1.0](docs/Handball_AI_Project_Requirements_v1.0.docx)。该文件用于替代此前的旧版需求文件。
@@ -131,8 +139,8 @@ python -m pytest -q
 ```text
 ESLint                         Passed
 TypeScript type-check          Passed
-Frontend unit tests            23 passed
-Backend tests                  24 passed
+Frontend unit tests            24 passed
+Backend tests                  25 passed
 Production build               Passed
 ```
 
@@ -161,8 +169,8 @@ Production build               Passed
 
 - [x] US3.1 MP4 视频上传
 - [x] US3.1 视频与比赛记录关联
-- [ ] 上传进度和错误状态
-- [ ] 视频处理状态管理
+- [x] US3.2 上传进度和错误状态
+- [x] US3.2 视频处理状态管理
 
 ### Epic 4 Event Review and Video Clips
 

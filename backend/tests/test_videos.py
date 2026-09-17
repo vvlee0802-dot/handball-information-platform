@@ -1,3 +1,4 @@
+from hashlib import sha256
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -6,6 +7,7 @@ from app.core.authorization import UserRole
 from app.core.config import settings
 from app.core.security import hash_password
 from app.models.user import User
+from app.models.video import Video
 from tests.conftest import TestingSessionLocal
 from tests.test_matches import setup_references
 
@@ -85,10 +87,17 @@ def test_coach_uploads_mp4_and_video_remains_linked_after_refresh(
     assert uploaded["original_filename"] == "full-match.mp4"
     assert uploaded["size_bytes"] == len(VALID_MP4)
     assert uploaded["status"] == "uploaded"
+    assert uploaded["processing_status"] == "queued"
+    assert uploaded["processing_progress"] == 0
 
     refreshed = client.get(f"/api/matches/{match_id}/videos")
     assert refreshed.status_code == 200
-    assert refreshed.json() == [uploaded]
+    processed = refreshed.json()[0]
+    assert processed["processing_status"] == "completed"
+    assert processed["processing_progress"] == 100
+    assert processed["processing_attempts"] == 1
+    assert processed["failure_reason"] is None
+    assert processed["checksum_sha256"] == sha256(VALID_MP4).hexdigest()
     stored_files = list(tmp_path.rglob("*.mp4"))
     assert len(stored_files) == 1
     assert stored_files[0].read_bytes() == VALID_MP4
@@ -143,3 +152,40 @@ def test_athlete_cannot_upload_video(
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Insufficient permissions"}
+
+
+def test_failed_processing_shows_reason_and_can_be_retried(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    match_id = create_match(client)
+    replace_login(client, email="retry-coach@example.com", role=UserRole.COACH_ANALYST)
+    monkeypatch.setattr(settings, "video_upload_dir", tmp_path)
+    upload_response = client.put(
+        f"/api/matches/{match_id}/videos",
+        content=VALID_MP4,
+        headers={"Content-Type": "video/mp4", "X-Original-Filename": "retry.mp4"},
+    )
+    video_id = upload_response.json()["id"]
+
+    conflict = client.post(f"/api/videos/{video_id}/retry")
+    assert conflict.status_code == 409
+
+    with TestingSessionLocal() as db:
+        video = db.get(Video, video_id)
+        assert video is not None
+        (tmp_path / video.storage_key).unlink()
+        video.processing_status = "failed"
+        video.failure_reason = "测试失败"
+        db.commit()
+
+    retry_response = client.post(f"/api/videos/{video_id}/retry")
+    assert retry_response.status_code == 202
+    assert retry_response.json()["processing_status"] == "queued"
+
+    refreshed = client.get(f"/api/matches/{match_id}/videos").json()[0]
+    assert refreshed["processing_status"] == "failed"
+    assert refreshed["processing_progress"] == 5
+    assert refreshed["processing_attempts"] == 2
+    assert refreshed["failure_reason"] == "找不到已上传的视频文件，请确认存储目录后重试。"

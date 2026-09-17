@@ -14,6 +14,22 @@ def list_match_videos(db: Session, match_id: int) -> list[Video]:
     )
 
 
+def get_video(db: Session, video_id: int) -> Video | None:
+    return db.get(Video, video_id)
+
+
+def queue_video_for_retry(db: Session, video: Video) -> Video:
+    video.processing_status = "queued"
+    video.processing_progress = 0
+    video.failure_reason = None
+    video.checksum_sha256 = None
+    video.processing_started_at = None
+    video.processing_completed_at = None
+    db.commit()
+    db.refresh(video)
+    return video
+
+
 def create_video(
     db: Session,
     *,
@@ -32,6 +48,8 @@ def create_video(
         content_type=content_type,
         size_bytes=size_bytes,
         status="uploaded",
+        processing_status="queued",
+        processing_progress=0,
     )
     db.add(video)
     db.commit()

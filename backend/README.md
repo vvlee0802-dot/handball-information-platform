@@ -48,6 +48,16 @@ VIDEO_UPLOAD_MAX_BYTES=10737418240
 VIDEO_UPLOAD_DIR=backend/uploads
 ```
 
+US3.2 已实现：
+
+- 上传进度由前端 XMLHttpRequest 实时反馈
+- queued、processing、completed、failed 后台处理状态
+- 文件存在性、MP4 容器、记录大小和 SHA-256 完整性检查
+- `POST /api/videos/{video_id}/retry` 失败任务重试接口
+- 处理失败原因、处理进度、尝试次数和时间戳持久化
+
+当前后台任务运行在 FastAPI 进程内，适合本地 MVP。生产环境应迁移到独立任务队列，避免应用重启导致排队任务丢失。
+
 应用迁移并创建首个本地用户：
 
 ```bash

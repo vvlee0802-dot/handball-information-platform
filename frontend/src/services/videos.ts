@@ -1,5 +1,7 @@
 import { ApiError, apiRequest } from '@/services/http'
 
+export type VideoProcessingStatus = 'queued' | 'processing' | 'completed' | 'failed'
+
 export interface VideoRecord {
   id: number
   match_id: number
@@ -8,6 +10,13 @@ export interface VideoRecord {
   content_type: string
   size_bytes: number
   status: 'uploaded'
+  processing_status: VideoProcessingStatus
+  processing_progress: number
+  processing_attempts: number
+  failure_reason: string | null
+  checksum_sha256: string | null
+  processing_started_at: string | null
+  processing_completed_at: string | null
   created_at: string
 }
 
@@ -22,6 +31,9 @@ export const getVideoUploadPolicy = () =>
 
 export const listMatchVideos = (matchId: number) =>
   apiRequest<VideoRecord[]>(`/api/matches/${matchId}/videos`)
+
+export const retryVideoProcessing = (videoId: number) =>
+  apiRequest<VideoRecord>(`/api/videos/${videoId}/retry`, { method: 'POST' })
 
 export const validateVideoFile = (file: File, policy: VideoUploadPolicy): string | null => {
   const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()

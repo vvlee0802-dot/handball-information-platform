@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -18,9 +18,11 @@ import {
   formatBytes,
   getVideoUploadPolicy,
   listMatchVideos,
+  retryVideoProcessing,
   uploadMatchVideo,
   validateVideoFile,
   type VideoRecord,
+  type VideoProcessingStatus,
   type VideoUploadPolicy,
 } from '@/services/videos'
 
@@ -43,6 +45,8 @@ const videoError = ref('')
 const videoMessage = ref('')
 const uploadProgress = ref(0)
 const uploading = ref(false)
+const retryingVideoId = ref<number | null>(null)
+let videoPollTimer: ReturnType<typeof setTimeout> | null = null
 const form = reactive<MatchInput>({
   competition_id: 0,
   home_team_id: 0,
@@ -62,6 +66,18 @@ const home = computed(() => teams.value.find((x) => x.id === match.value?.home_t
 const away = computed(() => teams.value.find((x) => x.id === match.value?.away_team_id))
 const venue = computed(() => venues.value.find((x) => x.id === match.value?.venue_id))
 const scoresEnabled = computed(() => form.status === 'live' || form.status === 'completed')
+const processingLabels: Record<VideoProcessingStatus, string> = {
+  queued: '等待处理',
+  processing: '处理中',
+  completed: '处理完成',
+  failed: '处理失败',
+}
+const processingClasses: Record<VideoProcessingStatus, string> = {
+  queued: 'status-neutral',
+  processing: 'status-processing',
+  completed: 'status-ready',
+  failed: 'status-failed',
+}
 
 const fill = (record: MatchRecord) =>
   Object.assign(form, { ...record, start_time: record.start_time.slice(0, 5) })
@@ -132,6 +148,19 @@ const loadVideos = async () => {
     videos.value = await listMatchVideos(match.value.id)
   } catch (e) {
     videoError.value = e instanceof Error ? e.message : '视频记录加载失败'
+  } finally {
+    scheduleVideoPolling()
+  }
+}
+
+const scheduleVideoPolling = () => {
+  if (videoPollTimer) clearTimeout(videoPollTimer)
+  videoPollTimer = null
+  const hasActiveTask = videos.value.some((video) =>
+    ['queued', 'processing'].includes(video.processing_status),
+  )
+  if (hasActiveTask) {
+    videoPollTimer = setTimeout(() => void loadVideos(), 1500)
   }
 }
 
@@ -181,6 +210,21 @@ const submitVideo = async () => {
   }
 }
 
+const retryProcessing = async (video: VideoRecord) => {
+  retryingVideoId.value = video.id
+  videoError.value = ''
+  videoMessage.value = ''
+  try {
+    await retryVideoProcessing(video.id)
+    videoMessage.value = `已重新提交 ${video.original_filename} 的处理任务。`
+    await loadVideos()
+  } catch (e) {
+    videoError.value = e instanceof Error ? e.message : '重新处理失败'
+  } finally {
+    retryingVideoId.value = null
+  }
+}
+
 watch(
   [
     () => authStore.initialized,
@@ -195,6 +239,9 @@ watch(
   { immediate: true },
 )
 onMounted(load)
+onUnmounted(() => {
+  if (videoPollTimer) clearTimeout(videoPollTimer)
+})
 </script>
 
 <template>
@@ -387,11 +434,41 @@ onMounted(load)
           <div v-if="videos.length === 0" class="video-empty">本场比赛还没有上传录像。</div>
           <ul v-else class="video-list">
             <li v-for="video in videos" :key="video.id">
-              <div>
-                <strong>{{ video.original_filename }}</strong>
-                <span>{{ formatBytes(video.size_bytes) }}</span>
+              <div class="video-info">
+                <div class="video-title-row">
+                  <strong>{{ video.original_filename }}</strong>
+                  <span>{{ formatBytes(video.size_bytes) }}</span>
+                </div>
+                <div class="video-status-row">
+                  <span class="status-badge status-ready">uploaded</span>
+                  <span
+                    class="status-badge"
+                    :class="processingClasses[video.processing_status]"
+                  >
+                    {{ processingLabels[video.processing_status] }}
+                  </span>
+                  <small>第 {{ video.processing_attempts }} 次处理</small>
+                </div>
+                <div
+                  v-if="['queued', 'processing'].includes(video.processing_status)"
+                  class="processing-progress"
+                >
+                  <progress :value="video.processing_progress" max="100" />
+                  <span>{{ video.processing_progress }}%</span>
+                </div>
+                <div v-if="video.failure_reason" class="processing-failure">
+                  <span>{{ video.failure_reason }}</span>
+                  <button
+                    v-if="authStore.hasPermission('upload_and_annotate_video')"
+                    class="button button-secondary"
+                    type="button"
+                    :disabled="retryingVideoId === video.id"
+                    @click="retryProcessing(video)"
+                  >
+                    {{ retryingVideoId === video.id ? '正在重试…' : '重试处理' }}
+                  </button>
+                </div>
               </div>
-              <span class="status-badge status-ready">uploaded</span>
             </li>
           </ul>
         </template>
@@ -436,9 +513,19 @@ onMounted(load)
 .progress-row progress { width: 100%; height: 12px; accent-color: var(--primary); }
 .progress-row span { min-width: 42px; color: var(--primary-dark); font-weight: 750; text-align: right; }
 .video-list { display: grid; gap: 10px; margin: 20px 0 0; padding: 0; list-style: none; }
-.video-list li { padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; }
-.video-list li div { display: grid; gap: 4px; }
-.video-list li span:not(.status-badge) { color: var(--muted); font-size: 12px; }
+.video-list li { padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.video-info { display: grid; width: 100%; gap: 12px; }
+.video-title-row,
+.video-status-row,
+.processing-progress,
+.processing-failure { display: flex; align-items: center; gap: 9px; }
+.video-title-row { justify-content: space-between; }
+.video-title-row span,
+.video-status-row small { color: var(--muted); font-size: 12px; }
+.processing-progress progress { width: min(420px, 100%); height: 10px; accent-color: var(--primary); }
+.processing-progress span { min-width: 38px; color: var(--primary-dark); font-size: 12px; font-weight: 750; }
+.processing-failure { justify-content: space-between; padding: 12px; border-radius: 10px; color: var(--danger); background: var(--danger-soft); }
+.processing-failure span { font-size: 13px; font-weight: 650; }
 .video-empty,
 .video-access-note { margin-top: 20px; padding: 18px; border-radius: 12px; color: var(--muted-strong); background: var(--surface-soft); }
 @media (max-width: 620px) {
@@ -446,6 +533,8 @@ onMounted(load)
     align-items: flex-start;
   }
   .video-heading,
-  .video-list li { align-items: flex-start; flex-direction: column; }
+  .video-list li,
+  .video-title-row,
+  .processing-failure { align-items: flex-start; flex-direction: column; }
 }
 </style>

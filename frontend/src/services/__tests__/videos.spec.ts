@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { formatBytes, validateVideoFile, type VideoUploadPolicy } from '@/services/videos'
+import {
+  formatBytes,
+  retryVideoProcessing,
+  validateVideoFile,
+  type VideoUploadPolicy,
+} from '@/services/videos'
 
 
 const policy: VideoUploadPolicy = {
@@ -10,6 +15,9 @@ const policy: VideoUploadPolicy = {
 }
 
 describe('video upload validation', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
   it('accepts an MP4 within the configured size limit', () => {
     const file = new File(['valid-video'], 'full-match.mp4', { type: 'video/mp4' })
 
@@ -29,5 +37,22 @@ describe('video upload validation', () => {
 
     expect(validateVideoFile(file, policy)).toContain('上传上限')
     expect(formatBytes(10 * 1024 ** 3)).toBe('10.0 GiB')
+  })
+
+  it('submits a failed processing task for retry', async () => {
+    const responseBody = { id: 7, processing_status: 'queued' }
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(responseBody), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(retryVideoProcessing(7)).resolves.toEqual(responseBody)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/videos/7/retry',
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    )
   })
 })
