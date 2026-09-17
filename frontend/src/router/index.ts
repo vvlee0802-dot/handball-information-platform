@@ -8,6 +8,7 @@ export default createRouter({
   routes: [
     { path: '/', name: 'home', component: HomeView },
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
+    { path: '/admin/users', name: 'admin-users', component: () => import('@/views/AdminUsersView.vue') },
     { path: '/competitions', name: 'competitions', component: () => import('@/views/CompetitionsView.vue') },
     { path: '/competitions/:competitionId', name: 'competition-detail', component: () => import('@/views/CompetitionDetail.vue') },
     { path: '/matches', name: 'matches', component: MatchesView },

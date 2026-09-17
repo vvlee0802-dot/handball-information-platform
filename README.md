@@ -1,6 +1,6 @@
 # Handball Information Platform
 
-手球信息与比赛分析平台。目前已完成 Epic 1 页面基线，以及 Epic 2 的 US2.1 业务数据接入和 US2.2 登录会话。
+手球信息与比赛分析平台。目前已完成 Epic 1 页面基线，以及 Epic 2 的 US2.1 业务数据接入、US2.2 登录会话和 US2.3 用户角色权限。
 
 用户可以通过赛事、比赛、球队、球员或场馆查找信息。主要页面的数据现由 FastAPI 从 PostgreSQL 读取，不再只依赖浏览器中的静态内容。录像上传、AI 事件识别、视频审核和自动剪辑仍属于后续开发范围。
 
@@ -17,6 +17,13 @@
 2. 使用 `scrypt` 保存密码哈希，使用随机会话令牌和 HttpOnly Cookie 保持登录状态。
 3. 新增登录、当前用户和退出接口，并要求登录后才能调用基础数据写接口。
 4. 新增 Vue 登录页、会话恢复、退出和 401 重新登录引导，并补充前后端测试。
+
+## US2.3 本版改动
+
+1. 建立运动员、教练/分析师、赛事管理员和系统管理员四种角色，以及五类业务权限。
+2. 后端对赛事基础数据写操作和用户管理操作实施权限检查，直接请求接口也无法绕过限制。
+3. 新增系统管理员用户管理页面，可在网页中创建用户、选择角色、启停账号和授予额外权限。
+4. 前端根据当前用户权限显示新增、编辑和用户管理入口，并补充角色权限迁移与自动化测试。
 
 ## 需求文档
 
@@ -46,6 +53,7 @@
 - `Match`：比赛，通过外键关联赛事、主队、客队和场馆
 - `User`：注册用户，只保存密码哈希，不保存明文密码
 - `AuthSession`：服务端会话，只保存随机会话令牌的摘要
+- `UserPermission`：用户在角色默认权限之外获得的可配置权限
 
 所有实体均使用稳定 ID 建立关系，避免使用显示名称作为数据关联依据。
 
@@ -77,11 +85,11 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python -m alembic upgrade head
-python -m app.scripts.create_user --email coach@example.com --name "王教练"
+python -m app.scripts.create_user --email admin@example.com --name "系统管理员"
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
-创建用户时终端会要求输入并确认密码。密码不会显示，也不会写入命令历史。
+这条命令只用于创建第一个系统管理员，终端会要求输入并确认密码。之后可以登录网页，在“用户管理”页面创建其他账号，不需要每次使用终端。
 
 健康检查：`http://127.0.0.1:8000/api/health`
 
@@ -114,8 +122,8 @@ python -m pytest -q
 ```text
 ESLint                         Passed
 TypeScript type-check          Passed
-Frontend unit tests            19 passed
-Backend tests                  17 passed
+Frontend unit tests            20 passed
+Backend tests                  21 passed
 Production build               Passed
 ```
 
@@ -138,7 +146,7 @@ Production build               Passed
 
 - [x] US2.1 基础业务数据后端化与持久化
 - [x] US2.2 登录平台并保持会话
-- [ ] US2.3 用户角色和权限
+- [x] US2.3 用户角色和权限
 
 ### Epic 3 Match Video Management
 

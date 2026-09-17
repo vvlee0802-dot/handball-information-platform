@@ -7,6 +7,7 @@ import {
   logout as logoutRequest,
   type AuthUser,
   type LoginCredentials,
+  type Permission,
 } from '@/services/auth'
 import { ApiError } from '@/services/http'
 
@@ -14,6 +15,8 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<AuthUser | null>(null)
   const initialized = ref(false)
   const isAuthenticated = computed(() => user.value !== null)
+  const hasPermission = (permission: Permission) =>
+    user.value?.permissions.includes(permission) ?? false
 
   const restoreSession = async () => {
     try {
@@ -49,6 +52,7 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     initialized,
     isAuthenticated,
+    hasPermission,
     restoreSession,
     login,
     logout,

@@ -4,6 +4,7 @@ from fastapi import Cookie, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.authorization import Permission, has_permission
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories import auth as auth_repository
@@ -35,3 +36,25 @@ def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def require_permission(permission: Permission):
+    def check_permission(current_user: CurrentUser) -> User:
+        if not has_permission(current_user, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return current_user
+
+    return check_permission
+
+
+ManageCompetitionDataUser = Annotated[
+    User,
+    Depends(require_permission(Permission.MANAGE_COMPETITION_DATA)),
+]
+ManageUsersUser = Annotated[
+    User,
+    Depends(require_permission(Permission.MANAGE_USERS)),
+]

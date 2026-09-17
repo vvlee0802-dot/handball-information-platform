@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
+import { useAuthStore } from '@/stores/auth'
 import {
   createTeam,
   listTeams,
@@ -9,6 +10,7 @@ import {
   type TeamRecord,
 } from '@/services/teams'
 
+const authStore = useAuthStore()
 const teams = ref<TeamRecord[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
@@ -71,7 +73,7 @@ onMounted(loadTeams)
         </div>
       </header>
 
-      <section class="panel entity-form-panel">
+      <section v-if="authStore.hasPermission('manage_competition_data')" class="panel entity-form-panel">
         <h2 class="section-title">新增球队</h2>
         <form @submit.prevent="handleCreate">
           <div class="filter-grid">

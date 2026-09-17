@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import CurrentUser
+from app.api.dependencies.auth import ManageCompetitionDataUser
 from app.db.session import get_db
 from app.repositories import team as team_repository
 from app.schemas.team import TeamCreate, TeamRead, TeamUpdate
@@ -22,7 +22,7 @@ def list_teams(db: DatabaseSession) -> list[TeamRead]:
 def create_team(
     team_data: TeamCreate,
     db: DatabaseSession,
-    _current_user: CurrentUser,
+    _current_user: ManageCompetitionDataUser,
 ) -> TeamRead:
     return team_repository.create_team(db, team_data)
 
@@ -40,7 +40,7 @@ def update_team(
     team_id: int,
     team_data: TeamUpdate,
     db: DatabaseSession,
-    _current_user: CurrentUser,
+    _current_user: ManageCompetitionDataUser,
 ) -> TeamRead:
     team = team_repository.get_team(db, team_id)
     if team is None:

@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import { useAuthStore } from '@/stores/auth'
 import ApiMatchTable from '@/components/ApiMatchTable.vue'
 import NotFoundPanel from '@/components/NotFoundPanel.vue'
 import {
@@ -15,6 +16,7 @@ import { listMatches, type MatchRecord } from '@/services/matches'
 import { listTeams, type TeamRecord } from '@/services/teams'
 import { listVenues, type VenueRecord } from '@/services/venues'
 
+const authStore = useAuthStore()
 const route = useRoute()
 const competition = ref<CompetitionRecord | null>(null)
 const isLoading = ref(true)
@@ -129,7 +131,7 @@ onMounted(loadCompetition)
                 competitionStatusLabels[competition.status]
               }}</span>
               <button
-                v-if="!isEditing"
+                v-if="!isEditing && authStore.hasPermission('manage_competition_data')"
                 class="button button-secondary"
                 type="button"
                 @click="startEditing"

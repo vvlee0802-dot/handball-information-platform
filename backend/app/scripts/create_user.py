@@ -3,6 +3,7 @@ from getpass import getpass
 
 from sqlalchemy import select
 
+from app.core.authorization import UserRole
 from app.core.security import hash_password, normalize_email
 from app.db.session import SessionLocal
 from app.models.user import User
@@ -12,6 +13,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create a local platform user")
     parser.add_argument("--email", required=True)
     parser.add_argument("--name", required=True)
+    parser.add_argument(
+        "--role",
+        choices=[role.value for role in UserRole],
+        default=UserRole.SYSTEM_ADMIN.value,
+    )
     return parser.parse_args()
 
 
@@ -35,6 +41,7 @@ def main() -> None:
             email=email,
             display_name=args.name.strip(),
             password_hash=hash_password(password),
+            role=args.role,
         )
         db.add(user)
         db.commit()

@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import { useAuthStore } from '@/stores/auth'
 import ApiMatchTable from '@/components/ApiMatchTable.vue'
 import NotFoundPanel from '@/components/NotFoundPanel.vue'
 import { getVenue, updateVenue, type VenueInput, type VenueRecord } from '@/services/venues'
@@ -9,6 +10,7 @@ import { listMatches, type MatchRecord } from '@/services/matches'
 import { listCompetitions, type CompetitionRecord } from '@/services/competitions'
 import { listTeams, type TeamRecord } from '@/services/teams'
 
+const authStore = useAuthStore()
 const route = useRoute()
 const venue = ref<VenueRecord | null>(null)
 const isLoading = ref(true)
@@ -117,7 +119,7 @@ onMounted(loadVenue)
             <div class="detail-actions">
               <span class="meta-chip">{{ venue.city }}</span
               ><button
-                v-if="!isEditing"
+                v-if="!isEditing && authStore.hasPermission('manage_competition_data')"
                 class="button button-secondary"
                 type="button"
                 @click="startEditing"

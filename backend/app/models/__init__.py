@@ -5,6 +5,7 @@ from app.models.player import Player
 from app.models.team import Team
 from app.models.venue import Venue
 from app.models.user import User
+from app.models.user_permission import UserPermission
 
 __all__ = [
     "AuthSession",
@@ -13,5 +14,6 @@ __all__ = [
     "Player",
     "Team",
     "User",
+    "UserPermission",
     "Venue",
 ]

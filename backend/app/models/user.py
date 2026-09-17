@@ -13,6 +13,12 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(254), unique=True, index=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(30),
+        default="athlete",
+        server_default="athlete",
+        nullable=False,
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         default=True,
@@ -29,6 +35,11 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    permission_grants: Mapped[list["UserPermission"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 from app.models.auth_session import AuthSession  # noqa: E402
+from app.models.user_permission import UserPermission  # noqa: E402

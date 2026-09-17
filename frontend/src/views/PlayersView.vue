@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
+import { useAuthStore } from '@/stores/auth'
 import { createPlayer, listPlayers, type PlayerInput, type PlayerRecord } from '@/services/players'
 import { listTeams, type TeamRecord } from '@/services/teams'
 
+const authStore = useAuthStore()
 const players = ref<PlayerRecord[]>([])
 const teams = ref<TeamRecord[]>([])
 const keyword = ref('')
@@ -91,7 +93,7 @@ onMounted(loadData)
         </div>
       </header>
 
-      <section class="panel player-form-panel">
+      <section v-if="authStore.hasPermission('manage_competition_data')" class="panel player-form-panel">
         <h2 class="section-title">新增球员</h2>
         <div v-if="!isLoading && teams.length === 0" class="empty-state">
           请先在球队页面创建至少一支球队。

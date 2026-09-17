@@ -29,6 +29,9 @@ const handleLogout = async () => {
         <RouterLink to="/teams">球队</RouterLink>
         <RouterLink to="/players">球员</RouterLink>
         <RouterLink to="/venues">场馆</RouterLink>
+        <RouterLink v-if="authStore.hasPermission('manage_users')" to="/admin/users">
+          用户管理
+        </RouterLink>
       </nav>
 
       <div class="account-area">

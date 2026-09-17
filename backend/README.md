@@ -21,13 +21,23 @@ US2.2 已实现：
 - `POST /api/auth/logout`
 - 基础数据写接口的登录保护
 
+US2.3 已实现：
+
+- 运动员、教练/分析师、赛事管理员和系统管理员角色
+- 角色默认权限与用户额外权限
+- 基础数据写接口和用户管理接口的后端权限检查
+- `GET /api/admin/users`
+- `POST /api/admin/users`
+- `PATCH /api/admin/users/{user_id}`
+- 停用账号时撤销该用户现有会话
+
 应用迁移并创建首个本地用户：
 
 ```bash
 cd backend
 source .venv/bin/activate
 python -m alembic upgrade head
-python -m app.scripts.create_user --email coach@example.com --name "王教练"
+python -m app.scripts.create_user --email admin@example.com --name "系统管理员"
 ```
 
-用户角色和细粒度权限属于 US2.3；当前 US2.2 只区分“未登录”和“已登录”。
+命令行用于引导创建首个系统管理员。登录前端后，可在“用户管理”页面创建并配置其他账号。

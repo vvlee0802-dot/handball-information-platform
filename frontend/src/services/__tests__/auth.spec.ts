@@ -8,6 +8,9 @@ const user = {
   id: 1,
   email: 'coach@example.com',
   display_name: '王教练',
+  role: 'coach_analyst',
+  is_active: true,
+  permissions: ['view_authorized_video', 'upload_and_annotate_video', 'generate_reports'],
 }
 
 describe('authentication service', () => {

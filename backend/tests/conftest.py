@@ -10,6 +10,7 @@ import app.models  # noqa: F401
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.core.authorization import UserRole
 from app.core.security import hash_password
 from app.models.user import User
 
@@ -48,6 +49,7 @@ def registered_user() -> User:
             email="coach@example.com",
             display_name="测试教练",
             password_hash=hash_password("correct-password"),
+            role=UserRole.COMPETITION_ADMIN.value,
         )
         session.add(user)
         session.commit()

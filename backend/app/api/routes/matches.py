@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import CurrentUser
+from app.api.dependencies.auth import ManageCompetitionDataUser
 from app.db.session import get_db
 from app.repositories import competition as competitions
 from app.repositories import match as matches
@@ -37,7 +37,7 @@ def list_matches(db: DatabaseSession) -> list[MatchRead]:
 def create_match(
     data: MatchCreate,
     db: DatabaseSession,
-    _current_user: CurrentUser,
+    _current_user: ManageCompetitionDataUser,
 ) -> MatchRead:
     validate_references(db, data)
     return matches.create_match(db, data)
@@ -55,7 +55,7 @@ def update_match(
     match_id: int,
     data: MatchUpdate,
     db: DatabaseSession,
-    _current_user: CurrentUser,
+    _current_user: ManageCompetitionDataUser,
 ) -> MatchRead:
     match = matches.get_match(db, match_id)
     if match is None: raise HTTPException(status_code=404, detail="Match not found")

@@ -2,10 +2,12 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import { useAuthStore } from '@/stores/auth'
 import NotFoundPanel from '@/components/NotFoundPanel.vue'
 import { getPlayer, updatePlayer, type PlayerInput, type PlayerRecord } from '@/services/players'
 import { listTeams, type TeamRecord } from '@/services/teams'
 
+const authStore = useAuthStore()
 const route = useRoute()
 const player = ref<PlayerRecord | null>(null)
 const teams = ref<TeamRecord[]>([])
@@ -108,7 +110,7 @@ onMounted(loadData)
             <div class="detail-actions">
               <span class="meta-chip">#{{ player.number }}</span
               ><button
-                v-if="!isEditing"
+                v-if="!isEditing && authStore.hasPermission('manage_competition_data')"
                 class="button button-secondary"
                 type="button"
                 @click="startEditing"

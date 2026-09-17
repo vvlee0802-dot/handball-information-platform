@@ -22,6 +22,9 @@ def test_valid_credentials_create_session_and_return_user(
         "id": registered_user.id,
         "email": "coach@example.com",
         "display_name": "测试教练",
+        "role": "competition_admin",
+        "is_active": True,
+        "permissions": ["manage_competition_data", "view_authorized_video"],
     }
     assert "HttpOnly" in login_response.headers["set-cookie"]
 

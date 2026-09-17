@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
+import { useAuthStore } from '@/stores/auth'
 import {
   competitionStatusLabels,
   createCompetition,
@@ -9,6 +10,7 @@ import {
   type CompetitionRecord,
 } from '@/services/competitions'
 
+const authStore = useAuthStore()
 const form = reactive<CompetitionInput>({
   name: '',
   season: '',
@@ -74,7 +76,7 @@ onMounted(loadCompetitions)
         </div>
       </header>
 
-      <section class="panel competition-form-panel">
+      <section v-if="authStore.hasPermission('manage_competition_data')" class="panel competition-form-panel">
         <h2 class="section-title">新增赛事</h2>
 
         <form @submit.prevent="handleCreate">

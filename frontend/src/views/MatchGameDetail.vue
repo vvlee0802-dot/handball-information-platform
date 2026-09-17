@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import { useAuthStore } from '@/stores/auth'
 import NotFoundPanel from '@/components/NotFoundPanel.vue'
 import { listCompetitions, type CompetitionRecord } from '@/services/competitions'
 import {
@@ -14,6 +15,7 @@ import {
 import { listTeams, type TeamRecord } from '@/services/teams'
 import { listVenues, type VenueRecord } from '@/services/venues'
 
+const authStore = useAuthStore()
 const route = useRoute()
 const match = ref<MatchRecord | null>(null)
 const competitions = ref<CompetitionRecord[]>([])
@@ -131,7 +133,11 @@ onMounted(load)
           </div>
           <div class="detail-actions">
             <div class="score">{{ match.home_score ?? '—' }} : {{ match.away_score ?? '—' }}</div>
-            <button v-if="!editing" class="button button-secondary" @click="startEdit">
+            <button
+              v-if="!editing && authStore.hasPermission('manage_competition_data')"
+              class="button button-secondary"
+              @click="startEdit"
+            >
               编辑比赛
             </button>
           </div>

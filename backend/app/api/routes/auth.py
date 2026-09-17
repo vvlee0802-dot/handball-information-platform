@@ -12,7 +12,7 @@ from app.core.security import (
 )
 from app.db.session import get_db
 from app.repositories import auth as auth_repository
-from app.schemas.auth import LoginRequest, UserRead
+from app.schemas.auth import LoginRequest, UserRead, to_user_read
 
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
@@ -55,12 +55,12 @@ def login(
         samesite="lax",
         path="/",
     )
-    return user
+    return to_user_read(user)
 
 
 @router.get("/me", response_model=UserRead)
 def get_me(current_user: CurrentUser) -> UserRead:
-    return current_user
+    return to_user_read(current_user)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

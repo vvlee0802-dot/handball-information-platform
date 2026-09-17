@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
+import { useAuthStore } from '@/stores/auth'
 import { listCompetitions, type CompetitionRecord } from '@/services/competitions'
 import {
   createMatch,
@@ -11,6 +12,7 @@ import {
 } from '@/services/matches'
 import { listTeams, type TeamRecord } from '@/services/teams'
 import { listVenues, type VenueRecord } from '@/services/venues'
+const authStore = useAuthStore()
 const rows = ref<MatchRecord[]>([]),
   competitions = ref<CompetitionRecord[]>([]),
   teams = ref<TeamRecord[]>([]),
@@ -80,7 +82,7 @@ onMounted(load)
           <p class="page-description">创建并查看数据库中的真实比赛记录。</p>
         </div>
       </header>
-      <section class="panel form-panel">
+      <section v-if="authStore.hasPermission('manage_competition_data')" class="panel form-panel">
         <h2 class="section-title">新增比赛</h2>
         <form @submit.prevent="submit">
           <div class="filter-grid">

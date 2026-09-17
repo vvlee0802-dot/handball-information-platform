@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
+import { useAuthStore } from '@/stores/auth'
 import { createVenue, listVenues, type VenueInput, type VenueRecord } from '@/services/venues'
 
+const authStore = useAuthStore()
 const venues = ref<VenueRecord[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
@@ -51,7 +53,7 @@ onMounted(loadVenues)
         </div>
       </header>
 
-      <section class="panel entity-form-panel">
+      <section v-if="authStore.hasPermission('manage_competition_data')" class="panel entity-form-panel">
         <h2 class="section-title">新增场馆</h2>
         <form @submit.prevent="handleCreate">
           <div class="filter-grid">

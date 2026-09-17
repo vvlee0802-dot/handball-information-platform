@@ -4,6 +4,7 @@ from app.schemas.competition import (
     CompetitionUpdate,
 )
 from app.schemas.auth import LoginRequest, UserRead
+from app.schemas.user_admin import AdminUserCreate, AdminUserRead, AdminUserUpdate
 
 __all__ = [
     "CompetitionCreate",
@@ -11,4 +12,7 @@ __all__ = [
     "CompetitionUpdate",
     "LoginRequest",
     "UserRead",
+    "AdminUserCreate",
+    "AdminUserRead",
+    "AdminUserUpdate",
 ]

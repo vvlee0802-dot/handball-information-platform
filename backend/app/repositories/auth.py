@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.security import hash_session_token, normalize_email
 from app.models.auth_session import AuthSession
@@ -32,6 +32,7 @@ def create_session(
 def get_user_for_session(db: Session, raw_token: str) -> User | None:
     return db.scalar(
         select(User)
+        .options(selectinload(User.permission_grants))
         .join(AuthSession)
         .where(
             AuthSession.token_hash == hash_session_token(raw_token),
