@@ -2,6 +2,13 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import {
+  createClipExport,
+  getClipExportContentUrl,
+  listMatchClipExports,
+  type ClipExportRecord,
+  type ClipExportStatus,
+} from '@/services/clipExports'
 import { useAuthStore } from '@/stores/auth'
 import NotFoundPanel from '@/components/NotFoundPanel.vue'
 import { listCompetitions, type CompetitionRecord } from '@/services/competitions'
@@ -83,7 +90,14 @@ const verifyingEventId = ref<number | null>(null)
 const pendingSeekTime = ref<number | null>(null)
 const eventError = ref('')
 const eventMessage = ref('')
+const clipExports = ref<ClipExportRecord[]>([])
+const selectedClipEventIds = ref<number[]>([])
+const creatingClipExport = ref(false)
+const previewClipExportId = ref<number | null>(null)
+const clipError = ref('')
+const clipMessage = ref('')
 let videoPollTimer: ReturnType<typeof setTimeout> | null = null
+let clipPollTimer: ReturnType<typeof setTimeout> | null = null
 let activeUploadController: AbortController | null = null
 const form = reactive<MatchInput>({
   competition_id: 0,
@@ -145,6 +159,12 @@ const eventStatistics = computed(() => ({
   verified: events.value.filter((event) => event.status === 'verified').length,
   draft: events.value.filter((event) => event.status === 'draft').length,
 }))
+const selectedVerifiedEvents = computed(() =>
+  events.value.filter(
+    (event) =>
+      event.status === 'verified' && selectedClipEventIds.value.includes(event.id),
+  ),
+)
 const scoresEnabled = computed(() => form.status === 'live' || form.status === 'completed')
 const processingLabels: Record<VideoProcessingStatus, string> = {
   queued: '等待处理',
@@ -162,6 +182,12 @@ const videoTypeLabels: Record<VideoType, string> = {
   original: '原始录像',
   supplementary: '补充机位',
   processed: '处理结果',
+}
+const clipStatusLabels: Record<ClipExportStatus, string> = {
+  queued: '等待处理',
+  processing: '正在生成',
+  completed: '可以预览和下载',
+  failed: '生成失败',
 }
 const formatUploadTime = (value: string) => new Date(value).toLocaleString('zh-CN')
 
@@ -272,8 +298,59 @@ const loadEvents = async () => {
       player_id: eventFilters.player_id ?? undefined,
       status: eventFilters.status || undefined,
     })
+    const selectableIds = new Set(
+      events.value.filter((event) => event.status === 'verified').map((event) => event.id),
+    )
+    selectedClipEventIds.value = selectedClipEventIds.value.filter((id) => selectableIds.has(id))
   } catch (e) {
     eventError.value = e instanceof Error ? e.message : '事件记录加载失败'
+  }
+}
+
+const scheduleClipPolling = () => {
+  if (clipPollTimer) clearTimeout(clipPollTimer)
+  clipPollTimer = null
+  if (clipExports.value.some((task) => ['queued', 'processing'].includes(task.status))) {
+    clipPollTimer = setTimeout(() => void loadClipExports(), 1500)
+  }
+}
+
+const loadClipExports = async () => {
+  if (!match.value || !authStore.hasPermission('view_authorized_video')) return
+  try {
+    clipExports.value = await listMatchClipExports(match.value.id)
+    if (
+      previewClipExportId.value !== null &&
+      !clipExports.value.some(
+        (task) => task.id === previewClipExportId.value && task.status === 'completed',
+      )
+    ) {
+      previewClipExportId.value = null
+    }
+  } catch (e) {
+    clipError.value = e instanceof Error ? e.message : '片段任务加载失败'
+  } finally {
+    scheduleClipPolling()
+  }
+}
+
+const submitClipExport = async () => {
+  if (!match.value || selectedVerifiedEvents.value.length === 0) return
+  creatingClipExport.value = true
+  clipError.value = ''
+  clipMessage.value = ''
+  try {
+    await createClipExport(
+      match.value.id,
+      selectedVerifiedEvents.value.map((event) => event.id),
+    )
+    clipMessage.value = `已提交 ${selectedVerifiedEvents.value.length} 个事件的片段任务。`
+    selectedClipEventIds.value = []
+    await loadClipExports()
+  } catch (e) {
+    clipError.value = e instanceof Error ? e.message : '片段任务创建失败'
+  } finally {
+    creatingClipExport.value = false
   }
 }
 
@@ -595,6 +672,7 @@ watch(
     if (!initialized || !matchId) return
     void loadVideos()
     void loadEvents()
+    void loadClipExports()
     void loadUploadPolicy()
   },
   { immediate: true },
@@ -602,6 +680,7 @@ watch(
 onMounted(load)
 onUnmounted(() => {
   if (videoPollTimer) clearTimeout(videoPollTimer)
+  if (clipPollTimer) clearTimeout(clipPollTimer)
   activeUploadController?.abort()
 })
 </script>
@@ -1101,6 +1180,16 @@ onUnmounted(() => {
               <p v-if="event.note">{{ event.note }}</p>
             </div>
             <div class="event-actions">
+              <label
+                v-if="
+                  event.status === 'verified' &&
+                  authStore.hasPermission('upload_and_annotate_video')
+                "
+                class="clip-event-choice"
+              >
+                <input v-model="selectedClipEventIds" type="checkbox" :value="event.id" />
+                选入片段
+              </label>
               <span
                 class="status-badge"
                 :class="event.status === 'verified' ? 'status-ready' : 'status-neutral'"
@@ -1144,6 +1233,104 @@ onUnmounted(() => {
             </div>
           </li>
         </ol>
+
+        <section class="clip-export-panel">
+          <div class="video-heading">
+            <div>
+              <p class="eyebrow">Event Clips</p>
+              <h3>事件片段导出</h3>
+              <p class="page-description">
+                只能选择已确认事件。每个事件默认截取前 8 秒和后 5 秒，多选时会按比赛时间顺序合并。
+              </p>
+            </div>
+            <span class="meta-chip">{{ clipExports.length }} 个任务</span>
+          </div>
+
+          <div
+            v-if="authStore.hasPermission('upload_and_annotate_video')"
+            class="clip-export-create"
+          >
+            <span>已选择 {{ selectedVerifiedEvents.length }} 个已确认事件</span>
+            <button
+              class="button button-primary"
+              type="button"
+              :disabled="creatingClipExport || selectedVerifiedEvents.length === 0"
+              @click="submitClipExport"
+            >
+              {{ creatingClipExport ? '正在提交…' : '生成并导出 MP4' }}
+            </button>
+          </div>
+          <p v-if="clipError" class="error">{{ clipError }}</p>
+          <p v-if="clipMessage" class="success">{{ clipMessage }}</p>
+
+          <div v-if="clipExports.length === 0" class="video-empty">
+            还没有片段导出任务。请先确认事件，再勾选需要导出的内容。
+          </div>
+          <ul v-else class="clip-export-list">
+            <li v-for="task in clipExports" :key="task.id">
+              <div>
+                <strong>{{ task.filename }}</strong>
+                <span>
+                  {{ task.event_ids.length }} 个事件 ·
+                  {{ formatDuration(task.duration_seconds) }} ·
+                  {{ task.size_bytes === null ? '等待生成文件' : formatBytes(task.size_bytes) }}
+                </span>
+                <small v-if="task.failure_reason">{{ task.failure_reason }}</small>
+              </div>
+              <div class="clip-export-actions">
+                <span
+                  class="status-badge"
+                  :class="
+                    task.status === 'completed'
+                      ? 'status-ready'
+                      : task.status === 'failed'
+                        ? 'status-failed'
+                        : 'status-processing'
+                  "
+                >
+                  {{ clipStatusLabels[task.status] }}
+                </span>
+                <button
+                  v-if="task.status === 'completed'"
+                  class="button button-secondary"
+                  type="button"
+                  @click="previewClipExportId = task.id"
+                >
+                  预览
+                </button>
+                <a
+                  v-if="task.status === 'completed'"
+                  class="button button-primary"
+                  :href="getClipExportContentUrl(task.id, true)"
+                >
+                  下载 MP4
+                </a>
+              </div>
+            </li>
+          </ul>
+
+          <div v-if="previewClipExportId !== null" class="clip-preview">
+            <div class="event-edit-heading">
+              <strong>片段预览</strong>
+              <button
+                class="button button-secondary"
+                type="button"
+                @click="previewClipExportId = null"
+              >
+                关闭预览
+              </button>
+            </div>
+            <video
+              :key="previewClipExportId"
+              class="annotation-player"
+              controls
+              preload="metadata"
+              :src="getClipExportContentUrl(previewClipExportId)"
+            >
+              当前浏览器不支持视频播放。
+            </video>
+          </div>
+        </section>
       </section>
     </main>
   </div>
@@ -1236,6 +1423,20 @@ onUnmounted(() => {
 .event-list p { margin: 0; color: var(--muted-strong); }
 .event-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
 .event-actions .button { padding: 6px 10px; }
+.clip-event-choice { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-strong); font-size: 13px; font-weight: 650; }
+.clip-event-choice input { width: auto; }
+.clip-export-panel { margin-top: 30px; padding-top: 26px; border-top: 1px solid var(--border); }
+.clip-export-panel h3 { margin: 0; }
+.clip-export-create { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 18px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); }
+.clip-export-create span { color: var(--muted-strong); font-weight: 650; }
+.clip-export-list { display: grid; gap: 10px; margin: 16px 0 0; padding: 0; list-style: none; }
+.clip-export-list li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 16px; border: 1px solid var(--border); border-radius: 12px; }
+.clip-export-list li > div:first-child { display: grid; gap: 5px; }
+.clip-export-list span { color: var(--muted); font-size: 13px; }
+.clip-export-list small { color: var(--danger); font-weight: 650; }
+.clip-export-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.clip-export-actions .button { padding: 7px 11px; text-decoration: none; }
+.clip-preview { margin-top: 18px; padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
 @media (max-width: 620px) {
   .detail-actions {
     align-items: flex-start;
@@ -1250,5 +1451,8 @@ onUnmounted(() => {
   .event-list li { grid-template-columns: 68px 1fr; }
   .event-list li > .status-badge { grid-column: 2; justify-self: start; }
   .event-actions { grid-column: 2; justify-content: flex-start; }
+  .clip-export-create,
+  .clip-export-list li { align-items: flex-start; flex-direction: column; }
+  .clip-export-actions { justify-content: flex-start; }
 }
 </style>

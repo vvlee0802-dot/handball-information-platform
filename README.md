@@ -1,8 +1,8 @@
 # Handball Information Platform
 
-手球信息与比赛分析平台。目前已完成 Epic 1、Epic 2、Epic 3，以及 Epic 4 的 US4.1 网页内人工事件标注。
+手球信息与比赛分析平台。目前已完成 Epic 1、Epic 2、Epic 3，以及 Epic 4 的人工事件标注、审核、筛选、视频定位和片段导出。
 
-用户可以通过赛事、比赛、球队、球员或场馆查找信息。主要页面的数据由 FastAPI 从 PostgreSQL 读取；具备权限的教练或分析师可以为指定比赛上传 MP4 录像，并直接在比赛页面按视频时间新增人工事件。AI 事件识别、事件审核和自动剪辑仍属于后续开发范围。
+用户可以通过赛事、比赛、球队、球员或场馆查找信息。主要页面的数据由 FastAPI 从 PostgreSQL 读取；具备权限的教练或分析师可以上传 MP4 录像、标注并确认比赛事件，再生成可预览和下载的视频片段。AI 事件识别仍属于后续开发范围。
 
 ## US2.1 本版改动
 
@@ -81,6 +81,14 @@
 4. 每条事件新增“定位画面”操作，自动选择所属视频并跳转到事件时间。
 5. 跳转前同时检查事件视频是否存在和时间戳是否在视频范围内，异常数据会被阻止并显示明确提示。
 
+## US4.4 本版改动
+
+1. 新增片段导出任务和事件关联数据表，持续保存所选事件、创建用户、任务状态、文件信息、处理时间和失败原因。
+2. 只有已确认事件可以创建任务；每个事件默认截取前 8 秒和后 5 秒，并在比赛开头或视频结尾自动收紧范围。
+3. 后台使用项目依赖提供的 FFmpeg 将片段统一转为 H.264/AAC MP4；选择多个事件时按比赛时间顺序合并。
+4. 比赛详情页支持勾选一个或多个已确认事件，并自动轮询等待处理或正在生成的任务。
+5. 任务完成后可以直接在网页预览或下载 MP4；失败时数据库和页面都会保留可理解的失败原因。
+
 ## 需求文档
 
 当前正式需求文档为 [Handball AI Project Requirements v1.0](docs/Handball_AI_Project_Requirements_v1.0.docx)。该文件用于替代此前的旧版需求文件。
@@ -94,11 +102,12 @@
 - 比赛主客队、比分状态和外键关系校验
 - 比赛视频上传、续传、处理、播放与多视频管理
 - 基于播放器当前时间的人工比赛事件标注
+- 已确认事件的视频片段生成、任务跟踪、网页预览和 MP4 下载
 
 ## 技术栈
 
 - 前端：Vue 3、TypeScript、Vue Router、Pinia、Vite、Vitest、ESLint、Prettier
-- 后端：FastAPI、SQLAlchemy、Pydantic、Pytest
+- 后端：FastAPI、SQLAlchemy、Pydantic、Pytest、FFmpeg
 - 数据库：PostgreSQL、Alembic
 - 本地环境：Docker Compose
 
@@ -116,6 +125,8 @@
 - `VideoUploadSession`：可恢复上传会话，记录文件指纹、分片方案、所属用户和上传状态
 - `VideoUploadPart`：已成功接收的分片元数据，用于续传、去重和完整性校验
 - `Event`：人工或 AI 比赛事件，通过 `match_id` 和 `video_id` 关联比赛录像，并可关联参赛球队与球员
+- `ClipExport`：事件片段导出任务，记录处理状态、输出文件和失败原因
+- `ClipExportEvent`：导出任务与已确认事件的有序关联，用于生成单事件片段或多事件合并视频
 
 所有实体均使用稳定 ID 建立关系，避免使用显示名称作为数据关联依据。
 
@@ -184,8 +195,8 @@ python -m pytest -q
 ```text
 ESLint                         Passed
 TypeScript type-check          Passed
-Frontend unit tests            36 passed
-Backend tests                  42 passed
+Frontend unit tests            38 passed
+Backend tests                  45 passed
 Production build               Passed
 ```
 
@@ -228,7 +239,7 @@ Production build               Passed
 - [x] US4.1 事件关系校验与时间顺序展示
 - [x] US4.2 修改、删除和确认事件
 - [x] US4.3 事件筛选、同步统计和视频跳转
-- [ ] 生成与导出事件片段
+- [x] US4.4 生成、预览与导出事件片段
 
 ### Epic 5 AI Match Event Detection
 
@@ -256,9 +267,9 @@ Production build               Passed
 
 ## 当前范围说明
 
-当前版本已经支持在比赛详情页分片上传 MP4 录像、恢复中断上传，并管理同一场比赛的多条视频记录。
+当前版本已经支持在比赛详情页分片上传 MP4 录像、恢复中断上传、管理多条视频记录，并从已确认事件生成可预览和下载的 MP4 片段。
 
-目前视频本体与临时分片保存在 `VIDEO_UPLOAD_DIR` 指向的本地目录；切换为云端对象存储、正式转码队列和 AI 分析仍属于后续 US 与 Epic。
+目前视频本体、临时分片和导出片段保存在 `VIDEO_UPLOAD_DIR` 指向的本地目录；切换为云端对象存储、独立任务队列和 AI 分析仍属于后续 US 与 Epic。
 
 ## License
 
