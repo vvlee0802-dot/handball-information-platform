@@ -3,6 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.routes.auth import router as auth_router
+from app.api.routes.analysis_tasks import router as analysis_tasks_router
 from app.api.routes.clip_exports import router as clip_exports_router
 from app.api.routes.admin_users import router as admin_users_router
 from app.api.routes.competitions import router as competitions_router
@@ -20,6 +21,7 @@ app = FastAPI(
 )
 
 app.include_router(auth_router)
+app.include_router(analysis_tasks_router)
 app.include_router(clip_exports_router)
 app.include_router(admin_users_router)
 app.include_router(competitions_router)

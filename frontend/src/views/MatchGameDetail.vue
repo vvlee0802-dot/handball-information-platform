@@ -3,6 +3,12 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import {
+  listMatchAnalysisTasks,
+  startVideoAnalysis,
+  type AnalysisTaskRecord,
+  type AnalysisTaskStatus,
+} from '@/services/analysisTasks'
+import {
   createClipExport,
   getClipExportContentUrl,
   listMatchClipExports,
@@ -75,6 +81,10 @@ const selectedVideoType = ref<VideoType>('original')
 const videoInput = ref<HTMLInputElement | null>(null)
 const videoError = ref('')
 const videoMessage = ref('')
+const analysisTasks = ref<AnalysisTaskRecord[]>([])
+const startingAnalysisVideoId = ref<number | null>(null)
+const analysisError = ref('')
+const analysisMessage = ref('')
 const uploadProgress = ref(0)
 const uploading = ref(false)
 const retryingVideoId = ref<number | null>(null)
@@ -97,6 +107,7 @@ const previewClipExportId = ref<number | null>(null)
 const clipError = ref('')
 const clipMessage = ref('')
 let videoPollTimer: ReturnType<typeof setTimeout> | null = null
+let analysisPollTimer: ReturnType<typeof setTimeout> | null = null
 let clipPollTimer: ReturnType<typeof setTimeout> | null = null
 let activeUploadController: AbortController | null = null
 const form = reactive<MatchInput>({
@@ -170,6 +181,19 @@ const processingLabels: Record<VideoProcessingStatus, string> = {
   queued: '等待处理',
   processing: '处理中',
   completed: '处理完成',
+  failed: '处理失败',
+}
+const analysisStatusLabels: Record<AnalysisTaskStatus, string> = {
+  queued: '等待 AI 分析',
+  running: 'AI 分析中',
+  completed: '分析任务完成',
+  failed: '分析任务失败',
+}
+const analysisStageLabels: Record<string, string> = {
+  queued: '等待后台任务',
+  preparing: '准备视频',
+  scanning_frames: '扫描视频帧',
+  completed: '视频帧扫描完成',
   failed: '处理失败',
 }
 const processingClasses: Record<VideoProcessingStatus, string> = {
@@ -286,6 +310,45 @@ const loadVideos = async () => {
     videoError.value = e instanceof Error ? e.message : '视频记录加载失败'
   } finally {
     scheduleVideoPolling()
+  }
+}
+
+const latestAnalysisTask = (videoId: number) =>
+  analysisTasks.value.find((task) => task.video_id === videoId) ?? null
+
+const scheduleAnalysisPolling = () => {
+  if (analysisPollTimer) clearTimeout(analysisPollTimer)
+  analysisPollTimer = null
+  if (analysisTasks.value.some((task) => ['queued', 'running'].includes(task.status))) {
+    analysisPollTimer = setTimeout(() => void loadAnalysisTasks(), 1500)
+  }
+}
+
+const loadAnalysisTasks = async () => {
+  if (!match.value || !authStore.hasPermission('view_authorized_video')) return
+  try {
+    analysisTasks.value = await listMatchAnalysisTasks(match.value.id)
+  } catch (e) {
+    analysisError.value = e instanceof Error ? e.message : 'AI 分析任务加载失败'
+  } finally {
+    scheduleAnalysisPolling()
+  }
+}
+
+const startAnalysis = async (video: VideoRecord) => {
+  startingAnalysisVideoId.value = video.id
+  analysisError.value = ''
+  analysisMessage.value = ''
+  try {
+    const task = await startVideoAnalysis(video.id)
+    analysisMessage.value = task.reused
+      ? `该视频已有运行中的任务，继续显示任务 ${task.id}。`
+      : `已创建 AI 分析任务 ${task.id}。`
+    await loadAnalysisTasks()
+  } catch (e) {
+    analysisError.value = e instanceof Error ? e.message : 'AI 分析任务启动失败'
+  } finally {
+    startingAnalysisVideoId.value = null
   }
 }
 
@@ -671,6 +734,7 @@ watch(
   ([initialized, , matchId]) => {
     if (!initialized || !matchId) return
     void loadVideos()
+    void loadAnalysisTasks()
     void loadEvents()
     void loadClipExports()
     void loadUploadPolicy()
@@ -680,6 +744,7 @@ watch(
 onMounted(load)
 onUnmounted(() => {
   if (videoPollTimer) clearTimeout(videoPollTimer)
+  if (analysisPollTimer) clearTimeout(analysisPollTimer)
   if (clipPollTimer) clearTimeout(clipPollTimer)
   activeUploadController?.abort()
 })
@@ -838,6 +903,9 @@ onUnmounted(() => {
               MP4 · 推荐 H.264 · 1080p；单文件上限
               {{ uploadPolicy ? formatBytes(uploadPolicy.max_size_bytes) : '10 GiB' }}；支持断点续传。
             </p>
+            <p class="page-description">
+              视频处理完成后可启动 AI 分析任务；任务编号、真实状态和进度会保存到数据库。
+            </p>
           </div>
           <span v-if="videos.length" class="meta-chip">{{ videos.length }} 个视频</span>
         </div>
@@ -902,6 +970,8 @@ onUnmounted(() => {
           </form>
 
           <div v-if="videos.length === 0" class="video-empty">本场比赛还没有上传录像。</div>
+          <p v-if="analysisError" class="error">{{ analysisError }}</p>
+          <p v-if="analysisMessage" class="success">{{ analysisMessage }}</p>
           <ul v-else class="video-list">
             <li v-for="video in videos" :key="video.id">
               <div class="video-info">
@@ -935,6 +1005,36 @@ onUnmounted(() => {
                     @click="selectPlaybackVideo(video)"
                   >
                     {{ selectedPlaybackVideoId === video.id ? '正在标注' : '播放并标注' }}
+                  </button>
+                  <button
+                    v-if="authStore.hasPermission('upload_and_annotate_video')"
+                    class="button button-secondary"
+                    type="button"
+                    :disabled="
+                      video.processing_status !== 'completed' ||
+                      startingAnalysisVideoId === video.id ||
+                      ['queued', 'running'].includes(
+                        latestAnalysisTask(video.id)?.status ?? '',
+                      )
+                    "
+                    :title="
+                      ['queued', 'running'].includes(
+                        latestAnalysisTask(video.id)?.status ?? '',
+                      )
+                        ? '该视频已有运行中的 AI 分析任务'
+                        : '启动后台 AI 分析任务'
+                    "
+                    @click="startAnalysis(video)"
+                  >
+                    {{
+                      startingAnalysisVideoId === video.id
+                        ? '正在启动…'
+                        : ['queued', 'running'].includes(
+                              latestAnalysisTask(video.id)?.status ?? '',
+                            )
+                          ? 'AI 分析运行中'
+                          : '启动 AI 分析'
+                    }}
                   </button>
                   <button
                     v-if="authStore.hasPermission('upload_and_annotate_video')"
@@ -972,6 +1072,30 @@ onUnmounted(() => {
                   >
                     {{ retryingVideoId === video.id ? '正在重试…' : '重试处理' }}
                   </button>
+                </div>
+                <div
+                  v-if="latestAnalysisTask(video.id)"
+                  class="analysis-task-row"
+                  aria-live="polite"
+                >
+                  <div class="analysis-task-heading">
+                    <div>
+                      <strong>
+                        {{ analysisStatusLabels[latestAnalysisTask(video.id)!.status] }}
+                      </strong>
+                      <span>
+                        {{ analysisStageLabels[latestAnalysisTask(video.id)!.stage] ?? latestAnalysisTask(video.id)!.stage }}
+                      </span>
+                    </div>
+                    <code>{{ latestAnalysisTask(video.id)!.id }}</code>
+                  </div>
+                  <div class="processing-progress">
+                    <progress :value="latestAnalysisTask(video.id)!.progress" max="100" />
+                    <span>{{ latestAnalysisTask(video.id)!.progress }}%</span>
+                  </div>
+                  <small v-if="latestAnalysisTask(video.id)!.failure_reason" class="error">
+                    {{ latestAnalysisTask(video.id)!.failure_reason }}
+                  </small>
                 </div>
               </div>
             </li>
@@ -1391,6 +1515,11 @@ onUnmounted(() => {
 .processing-progress span { min-width: 38px; color: var(--primary-dark); font-size: 12px; font-weight: 750; }
 .processing-failure { justify-content: space-between; padding: 12px; border-radius: 10px; color: var(--danger); background: var(--danger-soft); }
 .processing-failure span { font-size: 13px; font-weight: 650; }
+.analysis-task-row { display: grid; gap: 10px; padding: 13px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.analysis-task-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.analysis-task-heading > div { display: grid; gap: 3px; }
+.analysis-task-heading span { color: var(--muted); font-size: 12px; }
+.analysis-task-heading code { max-width: 250px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .video-empty,
 .video-access-note { margin-top: 20px; padding: 18px; border-radius: 12px; color: var(--muted-strong); background: var(--surface-soft); }
 .annotation-section { margin-top: 20px; }

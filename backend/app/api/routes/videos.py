@@ -513,6 +513,11 @@ def delete_video(
             status_code=status.HTTP_409_CONFLICT,
             detail="Video cannot be deleted while it has match events",
         )
+    if videos.has_active_analysis_task(db, video_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Video cannot be deleted while an AI analysis task is active",
+        )
 
     stored_path = settings.video_storage_path / video.storage_key
     try:

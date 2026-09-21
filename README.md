@@ -1,6 +1,6 @@
 # Handball Information Platform
 
-手球信息与比赛分析平台。目前已完成 Epic 1、Epic 2、Epic 3，以及 Epic 4 的人工事件标注、审核、筛选、视频定位和片段导出。
+手球信息与比赛分析平台。目前已完成 Epic 1、Epic 2、Epic 3、Epic 4，以及 Epic 5 的 US5.1 AI 分析任务基础设施。
 
 用户可以通过赛事、比赛、球队、球员或场馆查找信息。主要页面的数据由 FastAPI 从 PostgreSQL 读取；具备权限的教练或分析师可以上传 MP4 录像、标注并确认比赛事件，再生成可预览和下载的视频片段。AI 事件识别仍属于后续开发范围。
 
@@ -89,6 +89,16 @@
 4. 比赛详情页支持勾选一个或多个已确认事件，并自动轮询等待处理或正在生成的任务。
 5. 任务完成后可以直接在网页预览或下载 MP4；失败时数据库和页面都会保留可理解的失败原因。
 
+## US5.1 本版改动
+
+1. 新增持久化 AI 分析任务表，记录 UUID 任务编号、所属比赛和视频、创建用户、状态、阶段、进度、处理时间与失败原因。
+2. 具备视频上传与标注权限的用户可以为处理完成的视频启动后台分析，接口立即返回任务编号和 queued 状态。
+3. 后台使用 FFmpeg 对视频帧进行实际扫描，并持续把 running、处理阶段和进度写入 PostgreSQL；刷新或重新进入页面后仍可恢复显示。
+4. 数据库使用部分唯一索引保证同一视频最多只有一个 queued 或 running 任务；重复提交直接返回已有任务及其编号。
+5. 运行中的 AI 任务会阻止源视频删除；页面自动轮询活动任务，进入 completed 或 failed 后停止，并展示失败原因。
+
+US5.1 只负责可靠的任务调度和视频扫描。候选进球、置信度、模型版本以及候选事件复核将在 US5.2 接入，不使用虚假候选数据代替模型结果。
+
 ## 需求文档
 
 当前正式需求文档为 [Handball AI Project Requirements v1.0](docs/Handball_AI_Project_Requirements_v1.0.docx)。该文件用于替代此前的旧版需求文件。
@@ -103,6 +113,7 @@
 - 比赛视频上传、续传、处理、播放与多视频管理
 - 基于播放器当前时间的人工比赛事件标注
 - 已确认事件的视频片段生成、任务跟踪、网页预览和 MP4 下载
+- AI 视频分析任务的启动、去重、持久化进度和刷新恢复
 
 ## 技术栈
 
@@ -127,6 +138,7 @@
 - `Event`：人工或 AI 比赛事件，通过 `match_id` 和 `video_id` 关联比赛录像，并可关联参赛球队与球员
 - `ClipExport`：事件片段导出任务，记录处理状态、输出文件和失败原因
 - `ClipExportEvent`：导出任务与已确认事件的有序关联，用于生成单事件片段或多事件合并视频
+- `AnalysisTask`：视频 AI 分析任务，记录任务编号、运行状态、处理阶段、进度和失败原因
 
 所有实体均使用稳定 ID 建立关系，避免使用显示名称作为数据关联依据。
 
@@ -195,8 +207,8 @@ python -m pytest -q
 ```text
 ESLint                         Passed
 TypeScript type-check          Passed
-Frontend unit tests            38 passed
-Backend tests                  45 passed
+Frontend unit tests            40 passed
+Backend tests                  49 passed
 Production build               Passed
 ```
 
@@ -243,7 +255,9 @@ Production build               Passed
 
 ### Epic 5 AI Match Event Detection
 
-- [ ] 自动检测进球事件
+- [x] US5.1 启动 AI 分析任务并持久化状态与进度
+- [x] US5.1 同一视频运行中任务去重
+- [ ] US5.2 自动检测并展示候选进球事件
 - [ ] 保存事件时间戳
 - [ ] 保存 AI 置信度和检测来源
 - [ ] 从事件跳转到对应视频时间

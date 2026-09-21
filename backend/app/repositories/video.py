@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.video import Video
 from app.models.event import Event
+from app.models.analysis_task import AnalysisTask
 
 
 def list_match_videos(db: Session, match_id: int) -> list[Video]:
@@ -77,6 +78,19 @@ def has_events(db: Session, video_id: int) -> bool:
         db.scalar(
             select(
                 exists().where(Event.video_id == video_id, Event.deleted_at.is_(None))
+            )
+        )
+    )
+
+
+def has_active_analysis_task(db: Session, video_id: int) -> bool:
+    return bool(
+        db.scalar(
+            select(
+                exists().where(
+                    AnalysisTask.video_id == video_id,
+                    AnalysisTask.status.in_(("queued", "running")),
+                )
             )
         )
     )
