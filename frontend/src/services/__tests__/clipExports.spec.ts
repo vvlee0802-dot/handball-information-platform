@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createClipExport,
+  deleteClipExport,
   getClipExportContentUrl,
   listMatchClipExports,
 } from '@/services/clipExports'
@@ -40,6 +41,18 @@ describe('clip export services', () => {
     expect(getClipExportContentUrl(9)).toBe('/api/clip-exports/9/content')
     expect(getClipExportContentUrl(9, true)).toBe(
       '/api/clip-exports/9/content?download=true',
+    )
+  })
+
+  it('deletes a generated export task', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await deleteClipExport(9)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/clip-exports/9',
+      expect.objectContaining({ method: 'DELETE', credentials: 'include' }),
     )
   })
 })

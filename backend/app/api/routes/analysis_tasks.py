@@ -5,10 +5,12 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import UploadVideoUser, ViewAuthorizedVideoUser
 from app.db.session import get_db
+from app.repositories import analysis_prediction as analysis_predictions
 from app.repositories import analysis_task as analysis_tasks
 from app.repositories import match as matches
 from app.repositories import video as videos
 from app.schemas.analysis_task import AnalysisTaskRead
+from app.schemas.analysis_prediction import AnalysisPredictionRead, AnalysisPredictionReview
 from app.services.analysis_task import process_analysis_task
 
 
@@ -47,6 +49,47 @@ def get_analysis_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Analysis task not found")
     return serialize_analysis_task(task)
+
+
+@router.get(
+    "/api/analysis-tasks/{task_id}/predictions",
+    response_model=list[AnalysisPredictionRead],
+)
+def list_analysis_predictions(
+    task_id: str,
+    db: DatabaseSession,
+    _current_user: ViewAuthorizedVideoUser,
+) -> list[AnalysisPredictionRead]:
+    task = analysis_tasks.get_analysis_task(db, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Analysis task not found")
+    return analysis_predictions.list_task_predictions(db, task_id)
+
+
+@router.post(
+    "/api/analysis-predictions/{prediction_id}/review",
+    response_model=AnalysisPredictionRead,
+)
+def review_analysis_prediction(
+    prediction_id: int,
+    review: AnalysisPredictionReview,
+    db: DatabaseSession,
+    current_user: UploadVideoUser,
+) -> AnalysisPredictionRead:
+    prediction = analysis_predictions.get_prediction(db, prediction_id)
+    if prediction is None:
+        raise HTTPException(status_code=404, detail="Analysis prediction not found")
+    if prediction.outcome != "false_positive":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only false-positive predictions require training review",
+        )
+    return analysis_predictions.review_false_positive(
+        db,
+        prediction=prediction,
+        decision=review.decision,
+        user_id=current_user.id,
+    )
 
 
 @router.post(

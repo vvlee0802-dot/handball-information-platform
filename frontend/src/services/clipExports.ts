@@ -26,5 +26,10 @@ export const createClipExport = (matchId: number, eventIds: number[]) =>
     body: JSON.stringify({ event_ids: eventIds }),
   })
 
+export const deleteClipExport = (clipExportId: number) =>
+  apiRequest<void>(`/api/clip-exports/${clipExportId}`, {
+    method: 'DELETE',
+  })
+
 export const getClipExportContentUrl = (clipExportId: number, download = false) =>
   `/api/clip-exports/${clipExportId}/content${download ? '?download=true' : ''}`

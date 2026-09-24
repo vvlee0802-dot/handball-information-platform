@@ -97,8 +97,10 @@ def test_coach_creates_manual_events_and_refresh_returns_timeline_order(
     assert earlier.status_code == 201
     assert earlier.json()["team_id"] == home_id
     assert earlier.json()["source"] == "manual"
-    assert earlier.json()["status"] == "draft"
+    assert earlier.json()["status"] == "verified"
     assert earlier.json()["created_by_user_id"] == coach.id
+    assert earlier.json()["verified_by_user_id"] == coach.id
+    assert earlier.json()["verified_at"] is not None
 
     refreshed = client.get(f"/api/matches/{match_id}/events")
     assert refreshed.status_code == 200
@@ -201,7 +203,7 @@ def test_event_relations_protect_player_and_video_from_deletion(client: TestClie
     assert player_deletion.json()["detail"] == "该球员仍有关联比赛事件，请先处理相关事件。"
 
 
-def test_coach_updates_event_and_edit_resets_verification(client: TestClient) -> None:
+def test_coach_updates_manual_event_and_keeps_it_verified(client: TestClient) -> None:
     match_id, home_id, _, player_id = create_match_and_player(client)
     creator = replace_login(client, email="event-editor@example.com", role=UserRole.COACH_ANALYST)
     video_id = create_video(match_id, creator.id)
@@ -236,9 +238,9 @@ def test_coach_updates_event_and_edit_resets_verification(client: TestClient) ->
     assert updated.json()["timestamp_seconds"] == 44.5
     assert updated.json()["note"] == "确认是进球"
     assert updated.json()["updated_by_user_id"] == reviewer.id
-    assert updated.json()["status"] == "draft"
-    assert updated.json()["verified_at"] is None
-    assert updated.json()["verified_by_user_id"] is None
+    assert updated.json()["status"] == "verified"
+    assert updated.json()["verified_at"] is not None
+    assert updated.json()["verified_by_user_id"] == reviewer.id
 
 
 def test_soft_deleted_event_disappears_and_releases_relations(client: TestClient) -> None:
@@ -304,7 +306,7 @@ def test_event_list_filters_by_type_team_player_and_status(client: TestClient) -
             "player_id": player_id,
         },
     ).json()
-    client.post(
+    away_timeout = client.post(
         f"/api/matches/{match_id}/events",
         json={
             "video_id": video_id,
@@ -312,7 +314,7 @@ def test_event_list_filters_by_type_team_player_and_status(client: TestClient) -
             "timestamp_seconds": 120,
             "team_id": away_id,
         },
-    )
+    ).json()
     client.post(f"/api/matches/{match_id}/events/{home_goal['id']}/verify")
 
     by_type = client.get(f"/api/matches/{match_id}/events?event_type=goal")
@@ -323,4 +325,4 @@ def test_event_list_filters_by_type_team_player_and_status(client: TestClient) -
     assert [item["event_type"] for item in by_type.json()] == ["goal"]
     assert [item["team_id"] for item in by_team.json()] == [away_id]
     assert [item["player_id"] for item in by_player.json()] == [player_id]
-    assert [item["id"] for item in by_status.json()] == [home_goal["id"]]
+    assert [item["id"] for item in by_status.json()] == [home_goal["id"], away_timeout["id"]]

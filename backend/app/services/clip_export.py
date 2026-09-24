@@ -22,6 +22,16 @@ class ClipExportError(Exception):
     pass
 
 
+def delete_clip_export_output(clip_export: ClipExport) -> None:
+    if clip_export.storage_key is None:
+        return
+    stored_path = settings.video_storage_path / clip_export.storage_key
+    try:
+        stored_path.unlink(missing_ok=True)
+    except OSError as error:
+        raise ClipExportError("无法删除已生成的视频文件，请稍后重试。") from error
+
+
 def calculate_clip_bounds(
     timestamp_seconds: float,
     video_duration_seconds: float | None,

@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.clip_export import ClipExport, ClipExportEvent
@@ -50,3 +50,13 @@ def list_event_ids(db: Session, clip_export_id: int) -> list[int]:
             .order_by(ClipExportEvent.sequence)
         )
     )
+
+
+def delete_clip_export(db: Session, clip_export: ClipExport) -> None:
+    db.execute(
+        delete(ClipExportEvent).where(
+            ClipExportEvent.clip_export_id == clip_export.id
+        )
+    )
+    db.delete(clip_export)
+    db.commit()

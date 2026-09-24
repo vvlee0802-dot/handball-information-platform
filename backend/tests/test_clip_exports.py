@@ -4,7 +4,10 @@ from fastapi.testclient import TestClient
 
 from app.core.authorization import UserRole
 from app.core.config import settings
+from app.models.clip_export import ClipExport
+from app.models.event import Event
 from app.services import clip_export as clip_export_service
+from tests.conftest import TestingSessionLocal
 from tests.test_events import create_match_and_player, create_video
 from tests.test_videos import replace_login
 
@@ -27,11 +30,29 @@ def create_event(
     return response.json()["id"]
 
 
+def create_ai_draft_event(match_id: int, video_id: int, user_id: int) -> int:
+    with TestingSessionLocal() as db:
+        event = Event(
+            match_id=match_id,
+            video_id=video_id,
+            event_type="goal",
+            timestamp_seconds=30,
+            source="ai",
+            status="draft",
+            created_by_user_id=user_id,
+            updated_by_user_id=user_id,
+        )
+        db.add(event)
+        db.commit()
+        db.refresh(event)
+        return event.id
+
+
 def test_only_verified_events_can_create_clip_export(client: TestClient) -> None:
     match_id, _, _, _ = create_match_and_player(client)
     coach = replace_login(client, email="clip-draft@example.com", role=UserRole.COACH_ANALYST)
     video_id = create_video(match_id, coach.id)
-    event_id = create_event(client, match_id, video_id, 30)
+    event_id = create_ai_draft_event(match_id, video_id, coach.id)
 
     response = client.post(
         f"/api/matches/{match_id}/clip-exports",
@@ -99,13 +120,46 @@ def test_clip_export_clamps_boundaries_persists_status_and_downloads_mp4(
     assert "attachment" in download.headers["content-disposition"]
     assert task["filename"] in download.headers["content-disposition"]
 
+    generated_files = list((tmp_path / "clips" / str(match_id)).glob("*.mp4"))
+    assert len(generated_files) == 1
+    deletion = client.delete(f"/api/clip-exports/{task['id']}")
+    assert deletion.status_code == 204
+    assert not generated_files[0].exists()
+    assert client.get(f"/api/matches/{match_id}/clip-exports").json() == []
+    assert client.get(f"/api/clip-exports/{task['id']}/content").status_code == 404
+
+
+def test_running_clip_export_cannot_be_deleted(client: TestClient) -> None:
+    match_id, _, _, _ = create_match_and_player(client)
+    coach = replace_login(client, email="clip-running@example.com", role=UserRole.COACH_ANALYST)
+    with TestingSessionLocal() as db:
+        task = ClipExport(
+            match_id=match_id,
+            created_by_user_id=coach.id,
+            status="processing",
+            filename="running.mp4",
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+        task_id = task.id
+
+    response = client.delete(f"/api/clip-exports/{task_id}")
+
+    assert response.status_code == 409
+    with TestingSessionLocal() as db:
+        assert db.get(ClipExport, task_id) is not None
+
 
 def test_athlete_can_view_but_cannot_create_clip_export(client: TestClient) -> None:
     match_id, _, _, _ = create_match_and_player(client)
     coach = replace_login(client, email="clip-owner@example.com", role=UserRole.COACH_ANALYST)
     video_id = create_video(match_id, coach.id)
     event_id = create_event(client, match_id, video_id, 40)
-    client.post(f"/api/matches/{match_id}/events/{event_id}/verify")
+    owned_export = client.post(
+        f"/api/matches/{match_id}/clip-exports",
+        json={"event_ids": [event_id]},
+    ).json()
     replace_login(client, email="clip-athlete@example.com", role=UserRole.ATHLETE)
 
     listing = client.get(f"/api/matches/{match_id}/clip-exports")
@@ -116,3 +170,4 @@ def test_athlete_can_view_but_cannot_create_clip_export(client: TestClient) -> N
 
     assert listing.status_code == 200
     assert creation.status_code == 403
+    assert client.delete(f"/api/clip-exports/{owned_export['id']}").status_code == 403

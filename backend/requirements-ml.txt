@@ -1,0 +1,9 @@
+# Optional local AI training dependencies. Install after requirements.txt.
+# The web API does not require these packages to start.
+torch>=2.7,<3.0
+torchvision>=0.22,<1.0
+# VideoMAE's published weights still use the Transformers 4.x attention names.
+transformers>=4.53,<5.0
+av>=14,<17
+numpy>=2.0,<3.0
+pillow>=11,<13

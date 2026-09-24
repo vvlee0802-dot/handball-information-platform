@@ -45,6 +45,9 @@ class EventRead(BaseModel):
     player_id: int | None
     note: str | None
     source: Literal["manual", "ai"]
+    confidence: float | None
+    model_version: str | None
+    analysis_task_id: str | None
     status: Literal["draft", "verified"]
     created_by_user_id: int
     updated_by_user_id: int

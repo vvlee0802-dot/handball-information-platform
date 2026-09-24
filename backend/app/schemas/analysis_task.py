@@ -13,6 +13,17 @@ class AnalysisTaskRead(BaseModel):
     status: Literal["queued", "running", "completed", "failed"]
     progress: int
     stage: str
+    model_version: str | None
+    candidate_count: int
+    evaluation_mode: bool
+    ground_truth_count: int
+    true_positive_count: int
+    false_positive_count: int
+    false_negative_count: int
+    precision: float | None
+    recall: float | None
+    f1: float | None
+    mean_absolute_error_seconds: float | None
     failure_reason: str | None
     processing_started_at: datetime | None
     processing_completed_at: datetime | None

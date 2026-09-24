@@ -28,6 +28,11 @@ class Event(Base):
     source: Mapped[str] = mapped_column(
         String(20), default="manual", server_default="manual", nullable=False
     )
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    model_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    analysis_task_id: Mapped[str | None] = mapped_column(
+        ForeignKey("analysis_tasks.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     status: Mapped[str] = mapped_column(
         String(20), default="draft", server_default="draft", nullable=False
     )

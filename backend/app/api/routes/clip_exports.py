@@ -14,7 +14,11 @@ from app.models.video import Video
 from app.repositories import clip_export as clip_exports
 from app.repositories import match as matches
 from app.schemas.clip_export import ClipExportCreate, ClipExportRead
-from app.services.clip_export import process_clip_export
+from app.services.clip_export import (
+    ClipExportError,
+    delete_clip_export_output,
+    process_clip_export,
+)
 
 
 router = APIRouter(tags=["clip-exports"])
@@ -137,3 +141,27 @@ def read_clip_export_content(
         media_type="video/mp4",
         headers={"Content-Disposition": f'inline; filename="{clip_export.filename}"'},
     )
+
+
+@router.delete(
+    "/api/clip-exports/{clip_export_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_clip_export(
+    clip_export_id: int,
+    db: DatabaseSession,
+    _current_user: UploadVideoUser,
+) -> None:
+    clip_export = clip_exports.get_clip_export(db, clip_export_id)
+    if clip_export is None:
+        raise HTTPException(status_code=404, detail="Clip export not found")
+    if clip_export.status in {"queued", "processing"}:
+        raise HTTPException(
+            status_code=409,
+            detail="A queued or processing clip export cannot be deleted",
+        )
+    try:
+        delete_clip_export_output(clip_export)
+    except ClipExportError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+    clip_exports.delete_clip_export(db, clip_export)

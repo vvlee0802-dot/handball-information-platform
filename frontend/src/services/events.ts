@@ -21,6 +21,9 @@ export interface MatchEventRecord {
   player_id: number | null
   note: string | null
   source: 'manual' | 'ai'
+  confidence: number | null
+  model_version: string | null
+  analysis_task_id: string | null
   status: 'draft' | 'verified'
   created_by_user_id: number
   updated_by_user_id: number

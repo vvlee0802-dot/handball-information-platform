@@ -22,6 +22,8 @@ __pycache__/
 .pytest_cache/
 .env
 backend/uploads/
+backend/datasets/
+backend/model_artifacts/
 
 # Editor directories and files
 .vscode/*

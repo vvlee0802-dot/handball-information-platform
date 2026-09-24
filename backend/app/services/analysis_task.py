@@ -8,8 +8,17 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.analysis_task import AnalysisTask
+from app.models.match import Match
 from app.models.video import Video
+from app.repositories import analysis_prediction as analysis_predictions
+from app.repositories import event as events
 from app.services.clip_export import get_ffmpeg_executable
+from app.services.goal_detection import (
+    GoalCandidatePrediction,
+    GoalDetectionResult,
+    detect_goal_candidates,
+)
+from app.services.goal_evaluation import evaluate_goal_predictions
 
 
 class AnalysisTaskError(Exception):
@@ -103,15 +112,111 @@ def process_analysis_task(task_id: str, bind: Engine) -> None:
                 task.progress = progress
                 db.commit()
 
-            scan_video_frames(source_path, video.duration_seconds, update_progress)
+            result = detect_goal_candidates(
+                source_path,
+                video.duration_seconds,
+                update_progress,
+            )
+            predictions = normalize_predictions(
+                result,
+                video.duration_seconds,
+            )
+            if predictions and result.model_version is None:
+                raise AnalysisTaskError("模型返回候选事件时必须提供模型版本。")
+            match = db.get(Match, task.match_id)
+            if match is None:
+                raise AnalysisTaskError("分析任务关联的比赛不存在。")
+            ground_truth_events = events.list_verified_manual_goals(
+                db,
+                match_id=task.match_id,
+                video_id=task.video_id,
+            )
+            expected_goal_count = (
+                match.home_score + match.away_score
+                if match.home_score is not None and match.away_score is not None
+                else None
+            )
+            has_complete_ground_truth = (
+                result.model_version is not None
+                and expected_goal_count is not None
+                and expected_goal_count > 0
+                and len(ground_truth_events) == expected_goal_count
+            )
+            if has_complete_ground_truth:
+                evaluation = evaluate_goal_predictions(
+                    [event.timestamp_seconds for event in ground_truth_events],
+                    predictions,
+                )
+                analysis_predictions.replace_evaluation_predictions(
+                    db,
+                    task_id=task.id,
+                    ground_truth_events=ground_truth_events,
+                    predictions=predictions,
+                    evaluation=evaluation,
+                )
+                task.evaluation_mode = True
+                task.ground_truth_count = evaluation.ground_truth_count
+                task.true_positive_count = evaluation.true_positive_count
+                task.false_positive_count = evaluation.false_positive_count
+                task.false_negative_count = evaluation.false_negative_count
+                task.precision = evaluation.precision
+                task.recall = evaluation.recall
+                task.f1 = evaluation.f1
+                task.mean_absolute_error_seconds = evaluation.mean_absolute_error_seconds
+            elif predictions:
+                events.soft_delete_ai_drafts_for_video(
+                    db,
+                    video_id=task.video_id,
+                    user_id=task.created_by_user_id,
+                )
+                events.create_ai_candidates(
+                    db,
+                    match_id=task.match_id,
+                    video_id=task.video_id,
+                    analysis_task_id=task.id,
+                    model_version=result.model_version or "",
+                    predictions=predictions,
+                    user_id=task.created_by_user_id,
+                )
+            task.model_version = result.model_version
+            task.candidate_count = len(predictions)
             task.status = "completed"
-            task.stage = "completed"
+            task.stage = (
+                "completed_evaluation"
+                if has_complete_ground_truth
+                else "completed"
+                if result.model_version is not None
+                else "completed_no_model"
+            )
             task.progress = 100
             task.processing_completed_at = datetime.now(UTC)
             db.commit()
-        except (AnalysisTaskError, OSError) as error:
+        except (AnalysisTaskError, OSError, RuntimeError) as error:
             task.status = "failed"
             task.stage = "failed"
             task.failure_reason = str(error)[:1000]
             task.processing_completed_at = datetime.now(UTC)
             db.commit()
+
+
+def normalize_predictions(
+    result: GoalDetectionResult,
+    duration_seconds: float | None,
+) -> list[GoalCandidatePrediction]:
+    valid: list[GoalCandidatePrediction] = []
+    for prediction in sorted(
+        result.candidates,
+        key=lambda candidate: (candidate.timestamp_seconds, -candidate.confidence),
+    ):
+        if prediction.timestamp_seconds < 0:
+            continue
+        if duration_seconds is not None and prediction.timestamp_seconds > duration_seconds:
+            continue
+        if not 0 <= prediction.confidence <= 1:
+            continue
+        if valid and prediction.timestamp_seconds - valid[-1].timestamp_seconds < 3:
+            if prediction.confidence > valid[-1].confidence:
+                valid[-1] = prediction
+            continue
+        valid.append(prediction)
+    return valid

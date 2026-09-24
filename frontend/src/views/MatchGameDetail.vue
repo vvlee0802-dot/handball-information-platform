@@ -3,13 +3,20 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import {
+  completedWithoutCandidates,
+  isLowConfidenceCandidate,
+  listAnalysisPredictions,
   listMatchAnalysisTasks,
+  reviewAnalysisPrediction,
   startVideoAnalysis,
+  type AnalysisPredictionOutcome,
+  type AnalysisPredictionRecord,
   type AnalysisTaskRecord,
   type AnalysisTaskStatus,
 } from '@/services/analysisTasks'
 import {
   createClipExport,
+  deleteClipExport,
   getClipExportContentUrl,
   listMatchClipExports,
   type ClipExportRecord,
@@ -85,6 +92,12 @@ const analysisTasks = ref<AnalysisTaskRecord[]>([])
 const startingAnalysisVideoId = ref<number | null>(null)
 const analysisError = ref('')
 const analysisMessage = ref('')
+const expandedAnalysisTaskId = ref<string | null>(null)
+const analysisPredictions = ref<AnalysisPredictionRecord[]>([])
+const analysisPredictionFilter = ref<'all' | AnalysisPredictionOutcome>('all')
+const analysisPredictionLoading = ref(false)
+const analysisPredictionError = ref('')
+const reviewingAnalysisPredictionId = ref<number | null>(null)
 const uploadProgress = ref(0)
 const uploading = ref(false)
 const retryingVideoId = ref<number | null>(null)
@@ -92,6 +105,11 @@ const deletingVideoId = ref<number | null>(null)
 const events = ref<MatchEventRecord[]>([])
 const selectedPlaybackVideoId = ref<number | null>(null)
 const videoPlayer = ref<HTMLVideoElement | null>(null)
+const annotationFullscreenContainer = ref<HTMLElement | null>(null)
+const annotationFullscreenActive = ref(false)
+const quickAnnotationOpen = ref(false)
+const quickAnnotationWasPlaying = ref(false)
+const quickAnnotationPosition = reactive({ x: 24, y: 80 })
 const currentVideoTime = ref(0)
 const eventSaving = ref(false)
 const editingEventId = ref<number | null>(null)
@@ -103,6 +121,7 @@ const eventMessage = ref('')
 const clipExports = ref<ClipExportRecord[]>([])
 const selectedClipEventIds = ref<number[]>([])
 const creatingClipExport = ref(false)
+const deletingClipExportId = ref<number | null>(null)
 const previewClipExportId = ref<number | null>(null)
 const clipError = ref('')
 const clipMessage = ref('')
@@ -110,6 +129,17 @@ let videoPollTimer: ReturnType<typeof setTimeout> | null = null
 let analysisPollTimer: ReturnType<typeof setTimeout> | null = null
 let clipPollTimer: ReturnType<typeof setTimeout> | null = null
 let activeUploadController: AbortController | null = null
+let quickAnnotationDrag:
+  | {
+      pointerId: number
+      startX: number
+      startY: number
+      originX: number
+      originY: number
+      moved: boolean
+    }
+  | null = null
+let suppressQuickAnnotationClick = false
 const form = reactive<MatchInput>({
   competition_id: 0,
   home_team_id: 0,
@@ -150,6 +180,21 @@ const venue = computed(() => venues.value.find((x) => x.id === match.value?.venu
 const playbackVideo = computed(() =>
   videos.value.find((video) => video.id === selectedPlaybackVideoId.value),
 )
+const quickAnnotationExpandsLeft = computed(() => {
+  const width = annotationFullscreenContainer.value?.clientWidth ?? window.innerWidth
+  return quickAnnotationPosition.x >= width / 2
+})
+const quickAnnotationPositionStyle = computed(() => ({
+  left: `${quickAnnotationPosition.x}px`,
+  top: `${quickAnnotationPosition.y}px`,
+}))
+const quickAnnotationPanelStyle = computed(() => {
+  const width = annotationFullscreenContainer.value?.clientWidth ?? window.innerWidth
+  const availableWidth = quickAnnotationExpandsLeft.value
+    ? quickAnnotationPosition.x + 128 - 16
+    : width - quickAnnotationPosition.x - 16
+  return { width: `${Math.max(320, Math.min(1120, availableWidth))}px` }
+})
 const participantPlayers = computed(() => {
   if (!match.value) return []
   const participantTeamIds = new Set([match.value.home_team_id, match.value.away_team_id])
@@ -170,6 +215,13 @@ const eventStatistics = computed(() => ({
   verified: events.value.filter((event) => event.status === 'verified').length,
   draft: events.value.filter((event) => event.status === 'draft').length,
 }))
+const filteredAnalysisPredictions = computed(() =>
+  analysisPredictionFilter.value === 'all'
+    ? analysisPredictions.value
+    : analysisPredictions.value.filter(
+        (prediction) => prediction.outcome === analysisPredictionFilter.value,
+      ),
+)
 const selectedVerifiedEvents = computed(() =>
   events.value.filter(
     (event) =>
@@ -194,7 +246,14 @@ const analysisStageLabels: Record<string, string> = {
   preparing: '准备视频',
   scanning_frames: '扫描视频帧',
   completed: '视频帧扫描完成',
+  completed_evaluation: '整场模型评估完成',
+  completed_no_model: '帧扫描完成，等待接入训练模型',
   failed: '处理失败',
+}
+const analysisPredictionOutcomeLabels: Record<AnalysisPredictionOutcome, string> = {
+  true_positive: '命中',
+  false_positive: '误报',
+  false_negative: '漏检',
 }
 const processingClasses: Record<VideoProcessingStatus, string> = {
   queued: 'status-neutral',
@@ -326,8 +385,17 @@ const scheduleAnalysisPolling = () => {
 
 const loadAnalysisTasks = async () => {
   if (!match.value || !authStore.hasPermission('view_authorized_video')) return
+  const hadActiveTask = analysisTasks.value.some((task) =>
+    ['queued', 'running'].includes(task.status),
+  )
   try {
     analysisTasks.value = await listMatchAnalysisTasks(match.value.id)
+    if (
+      hadActiveTask &&
+      !analysisTasks.value.some((task) => ['queued', 'running'].includes(task.status))
+    ) {
+      await loadEvents()
+    }
   } catch (e) {
     analysisError.value = e instanceof Error ? e.message : 'AI 分析任务加载失败'
   } finally {
@@ -349,6 +417,44 @@ const startAnalysis = async (video: VideoRecord) => {
     analysisError.value = e instanceof Error ? e.message : 'AI 分析任务启动失败'
   } finally {
     startingAnalysisVideoId.value = null
+  }
+}
+
+const toggleAnalysisPredictions = async (task: AnalysisTaskRecord) => {
+  if (expandedAnalysisTaskId.value === task.id) {
+    expandedAnalysisTaskId.value = null
+    analysisPredictions.value = []
+    return
+  }
+  expandedAnalysisTaskId.value = task.id
+  analysisPredictionFilter.value = 'all'
+  analysisPredictionLoading.value = true
+  analysisPredictionError.value = ''
+  try {
+    analysisPredictions.value = await listAnalysisPredictions(task.id)
+  } catch (e) {
+    analysisPredictions.value = []
+    analysisPredictionError.value = e instanceof Error ? e.message : 'AI 识别明细加载失败'
+  } finally {
+    analysisPredictionLoading.value = false
+  }
+}
+
+const reviewFalsePositive = async (
+  prediction: AnalysisPredictionRecord,
+  decision: 'include' | 'exclude',
+) => {
+  reviewingAnalysisPredictionId.value = prediction.id
+  analysisPredictionError.value = ''
+  try {
+    const updated = await reviewAnalysisPrediction(prediction.id, decision)
+    analysisPredictions.value = analysisPredictions.value.map((item) =>
+      item.id === updated.id ? updated : item,
+    )
+  } catch (e) {
+    analysisPredictionError.value = e instanceof Error ? e.message : '训练样本审核失败'
+  } finally {
+    reviewingAnalysisPredictionId.value = null
   }
 }
 
@@ -417,6 +523,26 @@ const submitClipExport = async () => {
   }
 }
 
+const removeClipExport = async (task: ClipExportRecord) => {
+  if (['queued', 'processing'].includes(task.status)) return
+  if (!window.confirm(`确定删除导出片段“${task.filename}”吗？原始录像和事件不会删除。`)) {
+    return
+  }
+  deletingClipExportId.value = task.id
+  clipError.value = ''
+  clipMessage.value = ''
+  try {
+    await deleteClipExport(task.id)
+    if (previewClipExportId.value === task.id) previewClipExportId.value = null
+    clipMessage.value = `已删除导出片段“${task.filename}”。`
+    await loadClipExports()
+  } catch (e) {
+    clipError.value = e instanceof Error ? e.message : '片段删除失败'
+  } finally {
+    deletingClipExportId.value = null
+  }
+}
+
 const selectPlaybackVideo = (video: VideoRecord) => {
   editingEventId.value = null
   selectedPlaybackVideoId.value = video.id
@@ -425,6 +551,120 @@ const selectPlaybackVideo = (video: VideoRecord) => {
   currentVideoTime.value = 0
   eventError.value = ''
   eventMessage.value = ''
+}
+
+const resetManualEventForm = () => {
+  editingEventId.value = null
+  eventForm.event_type = 'goal'
+  eventForm.team_id = null
+  eventForm.player_id = null
+  eventForm.note = null
+}
+
+const positionQuickAnnotationAtRight = () => {
+  const container = annotationFullscreenContainer.value
+  if (!container) return
+  quickAnnotationPosition.x = Math.max(16, container.clientWidth - 152)
+  quickAnnotationPosition.y = Math.max(
+    16,
+    Math.min(container.clientHeight - 72, container.clientHeight / 2 - 28),
+  )
+}
+
+const handleAnnotationFullscreenChange = () => {
+  annotationFullscreenActive.value =
+    document.fullscreenElement === annotationFullscreenContainer.value
+  if (annotationFullscreenActive.value) {
+    void nextTick(positionQuickAnnotationAtRight)
+  } else {
+    quickAnnotationOpen.value = false
+    quickAnnotationDrag = null
+  }
+}
+
+const toggleAnnotationFullscreen = async () => {
+  const container = annotationFullscreenContainer.value
+  if (!container) return
+  eventError.value = ''
+  try {
+    if (document.fullscreenElement === container) {
+      await document.exitFullscreen()
+    } else {
+      await container.requestFullscreen()
+    }
+  } catch {
+    eventError.value = '浏览器无法进入全屏标注模式，请检查全屏权限后重试。'
+  }
+}
+
+const clampQuickAnnotationPosition = (x: number, y: number) => {
+  const container = annotationFullscreenContainer.value
+  if (!container) return
+  quickAnnotationPosition.x = Math.max(12, Math.min(x, container.clientWidth - 140))
+  quickAnnotationPosition.y = Math.max(12, Math.min(y, container.clientHeight - 64))
+}
+
+const startQuickAnnotationDrag = (event: PointerEvent) => {
+  if (quickAnnotationOpen.value) return
+  quickAnnotationDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    originX: quickAnnotationPosition.x,
+    originY: quickAnnotationPosition.y,
+    moved: false,
+  }
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+}
+
+const moveQuickAnnotation = (event: PointerEvent) => {
+  if (!quickAnnotationDrag || quickAnnotationDrag.pointerId !== event.pointerId) return
+  const deltaX = event.clientX - quickAnnotationDrag.startX
+  const deltaY = event.clientY - quickAnnotationDrag.startY
+  if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) quickAnnotationDrag.moved = true
+  clampQuickAnnotationPosition(
+    quickAnnotationDrag.originX + deltaX,
+    quickAnnotationDrag.originY + deltaY,
+  )
+}
+
+const finishQuickAnnotationDrag = (event: PointerEvent) => {
+  if (!quickAnnotationDrag || quickAnnotationDrag.pointerId !== event.pointerId) return
+  suppressQuickAnnotationClick = quickAnnotationDrag.moved
+  ;(event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId)
+  quickAnnotationDrag = null
+  window.setTimeout(() => {
+    suppressQuickAnnotationClick = false
+  }, 0)
+}
+
+const beginQuickAnnotation = () => {
+  if (suppressQuickAnnotationClick || !videoPlayer.value) return
+  quickAnnotationWasPlaying.value = !videoPlayer.value.paused
+  videoPlayer.value.pause()
+  updateCurrentVideoTime()
+  resetManualEventForm()
+  eventForm.timestamp_seconds = Number(currentVideoTime.value.toFixed(3))
+  eventError.value = ''
+  eventMessage.value = ''
+  quickAnnotationOpen.value = true
+}
+
+const resumeAfterQuickAnnotation = async () => {
+  quickAnnotationOpen.value = false
+  resetManualEventForm()
+  if (!quickAnnotationWasPlaying.value || !videoPlayer.value) return
+  try {
+    await videoPlayer.value.play()
+  } catch {
+    eventMessage.value = '标注已结束，请点击播放器继续播放。'
+  }
+}
+
+const cancelQuickAnnotation = async () => {
+  eventError.value = ''
+  eventMessage.value = ''
+  await resumeAfterQuickAnnotation()
 }
 
 const updateCurrentVideoTime = () => {
@@ -493,13 +733,16 @@ const resetEventFilters = async () => {
   await loadEvents()
 }
 
-const showEventInPlayer = async (event: MatchEventRecord): Promise<boolean> => {
-  const video = videos.value.find((item) => item.id === event.video_id)
+const showTimestampInPlayer = async (
+  videoId: number,
+  timestampSeconds: number,
+): Promise<boolean> => {
+  const video = videos.value.find((item) => item.id === videoId)
   if (!video) {
-    eventError.value = '该事件关联的视频当前不可用。'
+    eventError.value = '该识别结果关联的视频当前不可用。'
     return false
   }
-  const validationError = validateEventTimestamp(event.timestamp_seconds, video.duration_seconds)
+  const validationError = validateEventTimestamp(timestampSeconds, video.duration_seconds)
   if (validationError) {
     eventError.value = validationError
     return false
@@ -507,9 +750,9 @@ const showEventInPlayer = async (event: MatchEventRecord): Promise<boolean> => {
   selectedPlaybackVideoId.value = video.id
   editingEventId.value = null
   eventForm.video_id = video.id
-  eventForm.timestamp_seconds = event.timestamp_seconds
-  currentVideoTime.value = event.timestamp_seconds
-  pendingSeekTime.value = event.timestamp_seconds
+  eventForm.timestamp_seconds = timestampSeconds
+  currentVideoTime.value = timestampSeconds
+  pendingSeekTime.value = timestampSeconds
   eventError.value = ''
   eventMessage.value = ''
   await nextTick()
@@ -518,12 +761,25 @@ const showEventInPlayer = async (event: MatchEventRecord): Promise<boolean> => {
   return true
 }
 
+const showEventInPlayer = async (event: MatchEventRecord): Promise<boolean> =>
+  showTimestampInPlayer(event.video_id, event.timestamp_seconds)
+
 const jumpToEvent = async (event: MatchEventRecord) => {
   await showEventInPlayer(event)
 }
 
-const submitEvent = async () => {
-  if (!match.value || !playbackVideo.value) return
+const jumpToAnalysisPrediction = async (
+  prediction: AnalysisPredictionRecord,
+  videoId: number,
+) => {
+  const timestamp =
+    prediction.predicted_timestamp_seconds ?? prediction.ground_truth_timestamp_seconds
+  if (timestamp === null) return
+  await showTimestampInPlayer(videoId, timestamp)
+}
+
+const submitEvent = async (): Promise<boolean> => {
+  if (!match.value || !playbackVideo.value) return false
   eventSaving.value = true
   eventError.value = ''
   eventMessage.value = ''
@@ -536,26 +792,32 @@ const submitEvent = async () => {
       note: eventForm.note?.trim() || null,
     }
     if (editingEventId.value === null) {
-      await createMatchEvent(match.value.id, {
+      const created = await createMatchEvent(match.value.id, {
         video_id: playbackVideo.value.id,
         ...payload,
       })
-      eventMessage.value = `已在 ${formatDuration(eventForm.timestamp_seconds)} 保存人工事件。`
+      eventMessage.value = `已在 ${formatDuration(created.timestamp_seconds)} 保存并确认人工事件。`
     } else {
-      await updateMatchEvent(match.value.id, editingEventId.value, payload)
-      eventMessage.value = `已更新 ${formatDuration(eventForm.timestamp_seconds)} 的事件，状态回到待确认。`
+      const updated = await updateMatchEvent(match.value.id, editingEventId.value, payload)
+      eventMessage.value =
+        updated.status === 'verified'
+          ? `已更新并确认 ${formatDuration(updated.timestamp_seconds)} 的人工事件。`
+          : `已更新 ${formatDuration(updated.timestamp_seconds)} 的 AI 候选，请继续确认。`
       editingEventId.value = null
     }
-    eventForm.event_type = 'goal'
-    eventForm.team_id = null
-    eventForm.player_id = null
-    eventForm.note = null
+    resetManualEventForm()
     await loadEvents()
+    return true
   } catch (e) {
     eventError.value = e instanceof Error ? e.message : '事件保存失败'
+    return false
   } finally {
     eventSaving.value = false
   }
+}
+
+const submitQuickAnnotation = async () => {
+  if (await submitEvent()) await resumeAfterQuickAnnotation()
 }
 
 const startEditEvent = async (event: MatchEventRecord) => {
@@ -741,12 +1003,16 @@ watch(
   },
   { immediate: true },
 )
-onMounted(load)
+onMounted(() => {
+  document.addEventListener('fullscreenchange', handleAnnotationFullscreenChange)
+  void load()
+})
 onUnmounted(() => {
   if (videoPollTimer) clearTimeout(videoPollTimer)
   if (analysisPollTimer) clearTimeout(analysisPollTimer)
   if (clipPollTimer) clearTimeout(clipPollTimer)
   activeUploadController?.abort()
+  document.removeEventListener('fullscreenchange', handleAnnotationFullscreenChange)
 })
 </script>
 
@@ -909,6 +1175,16 @@ onUnmounted(() => {
           </div>
           <span v-if="videos.length" class="meta-chip">{{ videos.length }} 个视频</span>
         </div>
+
+        <aside class="ai-boundary-note" role="note" aria-label="AI 分析支持边界">
+          <strong>AI 分析支持边界</strong>
+          <p>
+            当前进球模型仅针对与训练样本相似的清晰横向转播机位进行验证。侧后方机位、严重遮挡、低清晰度、回放和不同转播风格都可能降低准确率。
+          </p>
+          <p>
+            AI 结果只用于生成待审核候选，不会自动进入正式统计；未发现候选也不代表比赛一定没有进球。
+          </p>
+        </aside>
 
         <div v-if="!authStore.user" class="video-access-note">
           登录后可查看获授权的比赛录像；教练或分析师可以上传录像。
@@ -1086,9 +1362,164 @@ onUnmounted(() => {
                       <span>
                         {{ analysisStageLabels[latestAnalysisTask(video.id)!.stage] ?? latestAnalysisTask(video.id)!.stage }}
                       </span>
+                      <span>
+                        候选 {{ latestAnalysisTask(video.id)!.candidate_count }} 条 ·
+                        模型 {{ latestAnalysisTask(video.id)!.model_version ?? '尚未接入' }}
+                      </span>
+                      <div
+                        v-if="latestAnalysisTask(video.id)!.evaluation_mode"
+                        class="analysis-evaluation"
+                      >
+                        <strong>整场评估</strong>
+                        <span>
+                          命中 {{ latestAnalysisTask(video.id)!.true_positive_count }} /
+                          {{ latestAnalysisTask(video.id)!.ground_truth_count }} ·
+                          漏检 {{ latestAnalysisTask(video.id)!.false_negative_count }} ·
+                          误报 {{ latestAnalysisTask(video.id)!.false_positive_count }}
+                        </span>
+                        <span>
+                          Precision
+                          {{ ((latestAnalysisTask(video.id)!.precision ?? 0) * 100).toFixed(1) }}% ·
+                          Recall
+                          {{ ((latestAnalysisTask(video.id)!.recall ?? 0) * 100).toFixed(1) }}% ·
+                          F1 {{ ((latestAnalysisTask(video.id)!.f1 ?? 0) * 100).toFixed(1) }}%
+                        </span>
+                        <span v-if="latestAnalysisTask(video.id)!.mean_absolute_error_seconds !== null">
+                          平均时间偏差
+                          {{ latestAnalysisTask(video.id)!.mean_absolute_error_seconds!.toFixed(2) }} 秒
+                        </span>
+                        <button
+                          class="button button-secondary analysis-detail-toggle"
+                          type="button"
+                          @click="toggleAnalysisPredictions(latestAnalysisTask(video.id)!)"
+                        >
+                          {{
+                            expandedAnalysisTaskId === latestAnalysisTask(video.id)!.id
+                              ? '收起识别明细'
+                              : '查看识别明细'
+                          }}
+                        </button>
+                      </div>
                     </div>
                     <code>{{ latestAnalysisTask(video.id)!.id }}</code>
                   </div>
+                  <div
+                    v-if="expandedAnalysisTaskId === latestAnalysisTask(video.id)!.id"
+                    class="analysis-prediction-panel"
+                  >
+                    <p v-if="analysisPredictionLoading" class="page-description">
+                      正在加载识别明细…
+                    </p>
+                    <p v-else-if="analysisPredictionError" class="error">
+                      {{ analysisPredictionError }}
+                    </p>
+                    <template v-else>
+                      <div class="analysis-prediction-filters">
+                        <button
+                          v-for="filter in [
+                            { value: 'all', label: '全部' },
+                            { value: 'true_positive', label: '命中' },
+                            { value: 'false_positive', label: '误报' },
+                            { value: 'false_negative', label: '漏检' },
+                          ] as const"
+                          :key="filter.value"
+                          class="button button-secondary"
+                          :class="{ active: analysisPredictionFilter === filter.value }"
+                          type="button"
+                          @click="analysisPredictionFilter = filter.value"
+                        >
+                          {{ filter.label }}
+                        </button>
+                      </div>
+                      <p v-if="analysisPredictions.length === 0" class="page-description">
+                        该任务只保存了汇总指标，请重新运行一次 AI 分析生成明细。
+                      </p>
+                      <p
+                        v-else-if="filteredAnalysisPredictions.length === 0"
+                        class="page-description"
+                      >
+                        当前筛选下没有识别结果。
+                      </p>
+                      <ul v-else class="analysis-prediction-list">
+                        <li
+                          v-for="prediction in filteredAnalysisPredictions"
+                          :key="prediction.id"
+                          class="analysis-prediction-item"
+                        >
+                          <div>
+                            <strong>
+                              {{ analysisPredictionOutcomeLabels[prediction.outcome] }}
+                            </strong>
+                            <span v-if="prediction.predicted_timestamp_seconds !== null">
+                              AI {{ formatDuration(prediction.predicted_timestamp_seconds) }}
+                            </span>
+                            <span v-if="prediction.ground_truth_timestamp_seconds !== null">
+                              人工 {{ formatDuration(prediction.ground_truth_timestamp_seconds) }}
+                            </span>
+                            <span v-if="prediction.confidence !== null">
+                              置信度 {{ (prediction.confidence * 100).toFixed(1) }}%
+                            </span>
+                            <span
+                              v-if="isLowConfidenceCandidate(prediction.confidence)"
+                              class="confidence-warning"
+                            >
+                              低置信度，必须人工确认
+                            </span>
+                            <span v-if="prediction.time_error_seconds !== null">
+                              偏差 {{ prediction.time_error_seconds.toFixed(2) }} 秒
+                            </span>
+                            <span v-if="prediction.outcome === 'false_positive'">
+                              训练处理：{{
+                                prediction.training_decision === 'pending'
+                                  ? '待审核'
+                                  : prediction.training_decision === 'include'
+                                    ? '已加入困难负样本'
+                                    : '已排除'
+                              }}
+                            </span>
+                          </div>
+                          <div class="analysis-prediction-actions">
+                            <button
+                              class="button button-secondary"
+                              type="button"
+                              @click="jumpToAnalysisPrediction(prediction, video.id)"
+                            >
+                              定位视频
+                            </button>
+                            <template
+                              v-if="
+                                prediction.outcome === 'false_positive' &&
+                                authStore.hasPermission('upload_and_annotate_video')
+                              "
+                            >
+                              <button
+                                class="button button-primary"
+                                type="button"
+                                :disabled="reviewingAnalysisPredictionId === prediction.id"
+                                @click="reviewFalsePositive(prediction, 'include')"
+                              >
+                                加入训练集
+                              </button>
+                              <button
+                                class="button button-secondary"
+                                type="button"
+                                :disabled="reviewingAnalysisPredictionId === prediction.id"
+                                @click="reviewFalsePositive(prediction, 'exclude')"
+                              >
+                                排除
+                              </button>
+                            </template>
+                          </div>
+                        </li>
+                      </ul>
+                    </template>
+                  </div>
+                  <p
+                    v-if="completedWithoutCandidates(latestAnalysisTask(video.id)!)"
+                    class="analysis-empty-warning"
+                  >
+                    本次分析未发现候选。这不代表比赛一定没有进球，请继续人工检查录像或使用人工标注。
+                  </p>
                   <div class="processing-progress">
                     <progress :value="latestAnalysisTask(video.id)!.progress" max="100" />
                     <span>{{ latestAnalysisTask(video.id)!.progress }}%</span>
@@ -1117,7 +1548,7 @@ onUnmounted(() => {
             <p class="eyebrow">Manual Annotation</p>
             <h2 class="section-title">人工事件标注</h2>
             <p class="page-description">
-              播放或暂停录像到事件发生的位置，再填写事件信息。保存时会自动记录当前视频时间。
+              播放或暂停录像到事件发生的位置，再填写事件信息。人工标注保存后会直接确认。
             </p>
           </div>
           <span class="meta-chip">{{ events.length }} 条事件</span>
@@ -1128,23 +1559,148 @@ onUnmounted(() => {
         <div v-if="playbackVideo" class="annotation-workspace">
           <div class="annotation-player-panel">
             <strong>{{ playbackVideo.original_filename }}</strong>
-            <video
-              :key="playbackVideo.id"
-              ref="videoPlayer"
-              class="annotation-player"
-              controls
-              preload="metadata"
-              :src="getVideoContentUrl(playbackVideo.id)"
-              @loadedmetadata="applyPendingSeek"
-              @timeupdate="updateCurrentVideoTime"
-              @seeked="updateCurrentVideoTime"
+            <div
+              ref="annotationFullscreenContainer"
+              class="annotation-fullscreen-container"
+              :class="{ 'is-fullscreen': annotationFullscreenActive }"
             >
-              当前浏览器不支持视频播放。
-            </video>
-            <div class="annotation-time">
-              <span>当前时间</span>
-              <strong>{{ formatDuration(currentVideoTime) }}</strong>
-              <small>{{ currentVideoTime.toFixed(3) }} 秒</small>
+              <video
+                :key="playbackVideo.id"
+                ref="videoPlayer"
+                class="annotation-player"
+                controls
+                preload="metadata"
+                :src="getVideoContentUrl(playbackVideo.id)"
+                @loadedmetadata="applyPendingSeek"
+                @timeupdate="updateCurrentVideoTime"
+                @seeked="updateCurrentVideoTime"
+              >
+                当前浏览器不支持视频播放。
+              </video>
+
+              <div
+                v-if="
+                  annotationFullscreenActive &&
+                  authStore.hasPermission('upload_and_annotate_video')
+                "
+                class="quick-annotation-anchor"
+                :style="quickAnnotationPositionStyle"
+              >
+                <button
+                  v-if="!quickAnnotationOpen"
+                  class="quick-annotation-trigger"
+                  type="button"
+                  :aria-expanded="quickAnnotationOpen"
+                  @click="beginQuickAnnotation"
+                  @pointerdown="startQuickAnnotationDrag"
+                  @pointermove="moveQuickAnnotation"
+                  @pointerup="finishQuickAnnotationDrag"
+                  @pointercancel="finishQuickAnnotationDrag"
+                >
+                  <span>标注事件</span>
+                  <small>{{ formatDuration(currentVideoTime) }}</small>
+                </button>
+
+                <form
+                  v-else
+                  class="quick-annotation-panel"
+                  :class="
+                    quickAnnotationExpandsLeft
+                      ? 'quick-annotation-panel--left'
+                      : 'quick-annotation-panel--right'
+                  "
+                  :style="quickAnnotationPanelStyle"
+                  @submit.prevent="submitQuickAnnotation"
+                >
+                  <div class="quick-annotation-field quick-annotation-time-field">
+                    <label for="quick-event-timestamp">事件时间</label>
+                    <input
+                      id="quick-event-timestamp"
+                      v-model.number="eventForm.timestamp_seconds"
+                      type="number"
+                      min="0"
+                      :max="playbackVideo.duration_seconds ?? undefined"
+                      step="0.001"
+                      required
+                      @change="seekFromEventTimestamp"
+                    />
+                  </div>
+                  <div class="quick-annotation-field">
+                    <label for="quick-event-type">事件类型</label>
+                    <select id="quick-event-type" v-model="eventForm.event_type" required>
+                      <option
+                        v-for="(label, value) in eventTypeLabels"
+                        :key="value"
+                        :value="value as EventType"
+                      >
+                        {{ label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="quick-annotation-field">
+                    <label for="quick-event-team">相关球队</label>
+                    <select id="quick-event-team" v-model="eventForm.team_id">
+                      <option :value="null">不指定球队</option>
+                      <option v-if="home" :value="home.id">{{ home.name }}</option>
+                      <option v-if="away" :value="away.id">{{ away.name }}</option>
+                    </select>
+                  </div>
+                  <div class="quick-annotation-field">
+                    <label for="quick-event-player">相关球员</label>
+                    <select
+                      id="quick-event-player"
+                      v-model="eventForm.player_id"
+                      @change="handlePlayerSelection"
+                    >
+                      <option :value="null">不指定球员</option>
+                      <option
+                        v-for="player in selectablePlayers"
+                        :key="player.id"
+                        :value="player.id"
+                      >
+                        {{ player.number }}号 · {{ player.name }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="quick-annotation-field quick-annotation-note-field">
+                    <label for="quick-event-note">备注</label>
+                    <input
+                      id="quick-event-note"
+                      v-model="eventForm.note"
+                      type="text"
+                      maxlength="500"
+                      placeholder="可选备注"
+                    />
+                  </div>
+                  <div class="quick-annotation-actions">
+                    <button
+                      class="button button-secondary"
+                      type="button"
+                      :disabled="eventSaving"
+                      @click="cancelQuickAnnotation"
+                    >
+                      取消
+                    </button>
+                    <button class="button button-primary" type="submit" :disabled="eventSaving">
+                      {{ eventSaving ? '保存中…' : '保存并继续' }}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+            <div class="annotation-player-toolbar">
+              <div class="annotation-time">
+                <span>当前时间</span>
+                <strong>{{ formatDuration(currentVideoTime) }}</strong>
+                <small>{{ currentVideoTime.toFixed(3) }} 秒</small>
+              </div>
+              <button
+                class="button button-secondary"
+                type="button"
+                @click="toggleAnnotationFullscreen"
+              >
+                {{ annotationFullscreenActive ? '退出全屏标注' : '进入全屏标注' }}
+              </button>
             </div>
           </div>
 
@@ -1294,6 +1850,17 @@ onUnmounted(() => {
             <time>{{ formatDuration(event.timestamp_seconds) }}</time>
             <div>
               <strong>{{ eventTypeLabels[event.event_type] }}</strong>
+              <span v-if="event.source === 'ai'" class="ai-candidate-meta">
+                AI 候选 · 置信度
+                {{ event.confidence === null ? '未知' : `${(event.confidence * 100).toFixed(1)}%` }}
+                · 模型 {{ event.model_version ?? '未知' }}
+              </span>
+              <span
+                v-if="event.source === 'ai' && isLowConfidenceCandidate(event.confidence)"
+                class="confidence-warning"
+              >
+                低置信度，必须人工确认
+              </span>
               <span>
                 {{ teams.find((team) => team.id === event.team_id)?.short_name ?? '未指定球队' }}
                 ·
@@ -1429,6 +1996,23 @@ onUnmounted(() => {
                 >
                   下载 MP4
                 </a>
+                <button
+                  v-if="authStore.hasPermission('upload_and_annotate_video')"
+                  class="button button-danger"
+                  type="button"
+                  :disabled="
+                    ['queued', 'processing'].includes(task.status) ||
+                    deletingClipExportId === task.id
+                  "
+                  :title="
+                    ['queued', 'processing'].includes(task.status)
+                      ? '任务处理完成后才能删除'
+                      : '删除导出任务和生成的 MP4，不影响原始录像与事件'
+                  "
+                  @click="removeClipExport(task)"
+                >
+                  {{ deletingClipExportId === task.id ? '删除中…' : '删除' }}
+                </button>
               </div>
             </li>
           </ul>
@@ -1485,6 +2069,9 @@ onUnmounted(() => {
 }
 .video-section { margin-top: 20px; }
 .video-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.ai-boundary-note { display: grid; gap: 6px; margin-top: 18px; padding: 14px 16px; border: 1px solid #f2c66d; border-radius: 12px; color: #6b4b0b; background: #fff8e8; }
+.ai-boundary-note strong { color: #7a4b00; }
+.ai-boundary-note p { margin: 0; font-size: 13px; line-height: 1.55; }
 .upload-form { margin-top: 22px; padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
 .upload-form input[type='file'] { height: auto; padding: 10px; background: white; }
 .video-type-field { margin-top: 14px; }
@@ -1519,6 +2106,19 @@ onUnmounted(() => {
 .analysis-task-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .analysis-task-heading > div { display: grid; gap: 3px; }
 .analysis-task-heading span { color: var(--muted); font-size: 12px; }
+.analysis-evaluation { display: grid; gap: 3px; margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: var(--surface); }
+.analysis-evaluation strong { color: var(--primary-dark); font-size: 12px; }
+.analysis-detail-toggle { width: fit-content; margin-top: 6px; }
+.analysis-prediction-panel { display: grid; gap: 10px; padding: 12px; border-top: 1px solid var(--border); }
+.analysis-prediction-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.analysis-prediction-filters .active { border-color: var(--primary); color: var(--primary-dark); background: var(--primary-soft); }
+.analysis-prediction-list { display: grid; gap: 8px; max-height: 440px; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.analysis-prediction-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.analysis-prediction-item > div:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.analysis-prediction-item span { color: var(--muted); font-size: 12px; }
+.confidence-warning { width: fit-content; padding: 2px 7px; border-radius: 999px; color: #8a4b08 !important; background: #fff0c7; font-size: 11px !important; font-weight: 750; }
+.analysis-empty-warning { margin: 0; padding: 10px 12px; border-radius: 8px; color: #7a4b00; background: #fff8e8; font-size: 12px; line-height: 1.5; }
+.analysis-prediction-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; gap: 6px; }
 .analysis-task-heading code { max-width: 250px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .video-empty,
 .video-access-note { margin-top: 20px; padding: 18px; border-radius: 12px; color: var(--muted-strong); background: var(--surface-soft); }
@@ -1527,11 +2127,31 @@ onUnmounted(() => {
 .annotation-workspace { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr); gap: 22px; margin-top: 22px; }
 .annotation-player-panel,
 .event-form { padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
-.annotation-player { display: block; width: 100%; max-height: 560px; margin-top: 12px; border-radius: 10px; background: #111827; }
+.annotation-fullscreen-container { position: relative; margin-top: 12px; overflow: hidden; border-radius: 10px; background: #030712; }
+.annotation-fullscreen-container.is-fullscreen { display: flex; width: 100vw; height: 100vh; align-items: center; justify-content: center; border-radius: 0; }
+.annotation-player { display: block; width: 100%; max-height: 560px; border-radius: 10px; background: #111827; }
+.annotation-fullscreen-container.is-fullscreen .annotation-player { width: 100%; height: 100%; max-height: none; border-radius: 0; object-fit: contain; }
+.annotation-player-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; }
 .annotation-time { display: flex; align-items: baseline; gap: 12px; margin-top: 12px; }
+.annotation-player-toolbar .annotation-time { margin-top: 0; }
 .annotation-time span,
 .annotation-time small { color: var(--muted); }
 .annotation-time strong { color: var(--primary-dark); font-size: 22px; }
+.quick-annotation-anchor { position: absolute; z-index: 20; width: 128px; pointer-events: none; }
+.quick-annotation-trigger { display: grid; width: 128px; min-height: 52px; padding: 8px 14px; border: 1px solid rgb(255 255 255 / 28%); border-radius: 999px; color: white; background: rgb(37 80 218 / 92%); box-shadow: 0 12px 30px rgb(0 0 0 / 35%); cursor: grab; pointer-events: auto; touch-action: none; user-select: none; }
+.quick-annotation-trigger:active { cursor: grabbing; }
+.quick-annotation-trigger span { font-size: 14px; font-weight: 800; }
+.quick-annotation-trigger small { color: rgb(255 255 255 / 78%); font-size: 11px; }
+.quick-annotation-panel { position: absolute; top: 0; display: grid; grid-template-columns: 118px 130px minmax(150px, 1fr) minmax(160px, 1fr) minmax(170px, 1.3fr) auto; align-items: end; gap: 10px; padding: 12px; border: 1px solid rgb(255 255 255 / 24%); border-radius: 14px; background: rgb(15 23 42 / 96%); box-shadow: 0 18px 50px rgb(0 0 0 / 48%); pointer-events: auto; }
+.quick-annotation-panel--left { right: 0; }
+.quick-annotation-panel--right { left: 0; }
+.quick-annotation-field { display: grid; min-width: 0; gap: 5px; }
+.quick-annotation-field label { color: rgb(255 255 255 / 72%); font-size: 11px; font-weight: 700; }
+.quick-annotation-field input,
+.quick-annotation-field select { width: 100%; min-width: 0; height: 38px; padding: 7px 9px; border-color: rgb(255 255 255 / 22%); color: #f8fafc; background: #1e293b; }
+.quick-annotation-field select option { color: #111827; background: white; }
+.quick-annotation-actions { display: flex; gap: 8px; }
+.quick-annotation-actions .button { height: 38px; padding: 7px 11px; white-space: nowrap; }
 .event-form { display: grid; align-content: start; gap: 14px; }
 .event-edit-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 .event-form textarea { width: 100%; resize: vertical; }
@@ -1550,6 +2170,7 @@ onUnmounted(() => {
 .event-list li > div { display: grid; gap: 5px; }
 .event-list li > div span { color: var(--muted); font-size: 13px; }
 .event-list p { margin: 0; color: var(--muted-strong); }
+.event-list .ai-candidate-meta { color: var(--primary-dark); font-weight: 700; }
 .event-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
 .event-actions .button { padding: 6px 10px; }
 .clip-event-choice { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-strong); font-size: 13px; font-weight: 650; }
@@ -1576,6 +2197,7 @@ onUnmounted(() => {
   .video-metadata-row,
   .processing-failure { align-items: flex-start; flex-direction: column; }
   .annotation-workspace { grid-template-columns: 1fr; }
+  .annotation-player-toolbar { align-items: flex-start; flex-direction: column; }
   .event-statistics { grid-template-columns: 1fr; }
   .event-list li { grid-template-columns: 68px 1fr; }
   .event-list li > .status-badge { grid-column: 2; justify-self: start; }
