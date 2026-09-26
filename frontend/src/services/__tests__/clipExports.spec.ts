@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createClipExport,
+  createPlayerHighlight,
   deleteClipExport,
   getClipExportContentUrl,
   listMatchClipExports,
@@ -41,6 +42,26 @@ describe('clip export services', () => {
     expect(getClipExportContentUrl(9)).toBe('/api/clip-exports/9/content')
     expect(getClipExportContentUrl(9, true)).toBe(
       '/api/clip-exports/9/content?download=true',
+    )
+  })
+
+  it('creates a player highlight for selected event types', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 7, status: 'queued' }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await createPlayerHighlight(12, 8, ['goal', 'save'])
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/matches/12/player-highlights',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ player_id: 8, event_types: ['goal', 'save'] }),
+      }),
     )
   })
 

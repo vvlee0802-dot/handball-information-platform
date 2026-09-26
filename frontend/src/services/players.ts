@@ -4,9 +4,9 @@ export interface PlayerRecord {
   id: number
   name: string
   number: number
-  position: string
+  position: string | null
   team_id: number
-  birth_date: string
+  birth_date: string | null
   description: string | null
   created_at: string
 }

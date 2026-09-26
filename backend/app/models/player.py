@@ -15,13 +15,13 @@ class Player(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
-    position: Mapped[str] = mapped_column(String(50), nullable=False)
+    position: Mapped[str | None] = mapped_column(String(50), nullable=True)
     team_id: Mapped[int] = mapped_column(
         ForeignKey("teams.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
-    birth_date: Mapped[date] = mapped_column(Date, nullable=False)
+    birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

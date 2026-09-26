@@ -13,7 +13,8 @@ from app.models.event import Event
 from app.models.video import Video
 from app.repositories import clip_export as clip_exports
 from app.repositories import match as matches
-from app.schemas.clip_export import ClipExportCreate, ClipExportRead
+from app.repositories import player as players
+from app.schemas.clip_export import ClipExportCreate, ClipExportRead, PlayerHighlightCreate
 from app.services.clip_export import (
     ClipExportError,
     delete_clip_export_output,
@@ -33,6 +34,9 @@ def serialize_clip_export(db: Session, clip_export) -> ClipExportRead:
         event_ids=clip_exports.list_event_ids(db, clip_export.id),
         status=clip_export.status,
         filename=clip_export.filename,
+        export_type=clip_export.export_type,
+        player_id=clip_export.player_id,
+        event_types=clip_export.event_types.split(",") if clip_export.event_types else [],
         size_bytes=clip_export.size_bytes,
         duration_seconds=clip_export.duration_seconds,
         failure_reason=clip_export.failure_reason,
@@ -108,6 +112,67 @@ def create_clip_export(
         user_id=current_user.id,
         event_ids=ordered_event_ids,
         filename=filename,
+    )
+    response = serialize_clip_export(db, clip_export)
+    background_tasks.add_task(process_clip_export, clip_export.id, db.get_bind())
+    return response
+
+
+@router.post(
+    "/api/matches/{match_id}/player-highlights",
+    response_model=ClipExportRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_player_highlight(
+    match_id: int,
+    payload: PlayerHighlightCreate,
+    background_tasks: BackgroundTasks,
+    db: DatabaseSession,
+    current_user: ViewAuthorizedVideoUser,
+) -> ClipExportRead:
+    match = matches.get_match(db, match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found")
+    player = players.get_player(db, payload.player_id)
+    if player is None or player.team_id not in {match.home_team_id, match.away_team_id}:
+        raise HTTPException(status_code=422, detail="Player does not participate in this match")
+    event_types = list(dict.fromkeys(payload.event_types))
+    selected_events = list(
+        db.scalars(
+            select(Event)
+            .where(
+                Event.match_id == match_id,
+                Event.player_id == player.id,
+                Event.event_type.in_(event_types),
+                Event.status == "verified",
+                Event.deleted_at.is_(None),
+            )
+            .order_by(Event.timestamp_seconds, Event.id)
+        )
+    )
+    if not selected_events:
+        raise HTTPException(
+            status_code=422,
+            detail="No verified events match the selected player and event types",
+        )
+    video_ids = {event.video_id for event in selected_events}
+    selected_videos = list(db.scalars(select(Video).where(Video.id.in_(video_ids))))
+    if len(selected_videos) != len(video_ids) or any(
+        video.deleted_at is not None or video.processing_status != "completed"
+        for video in selected_videos
+    ):
+        raise HTTPException(status_code=409, detail="All event videos must be available")
+
+    filename = f"match-{match_id}-player-{player.id}-highlight.mp4"
+    clip_export = clip_exports.create_clip_export(
+        db,
+        match_id=match_id,
+        user_id=current_user.id,
+        event_ids=[event.id for event in selected_events],
+        filename=filename,
+        export_type="player_highlight",
+        player_id=player.id,
+        event_types=event_types,
     )
     response = serialize_clip_export(db, clip_export)
     background_tasks.add_task(process_clip_export, clip_export.id, db.get_bind())

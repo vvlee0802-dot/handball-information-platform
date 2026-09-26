@@ -38,9 +38,9 @@ const fillForm = (record: PlayerRecord) =>
   Object.assign(editForm, {
     name: record.name,
     number: record.number,
-    position: record.position,
+    position: record.position ?? '',
     team_id: record.team_id,
-    birth_date: record.birth_date,
+    birth_date: record.birth_date ?? '',
     description: record.description ?? '',
   })
 
@@ -228,11 +228,11 @@ onMounted(loadData)
           <dl v-else class="info-list">
             <div>
               <dt>位置</dt>
-              <dd>{{ player.position }}</dd>
+              <dd>{{ player.position || '待完善' }}</dd>
             </div>
             <div>
               <dt>出生日期</dt>
-              <dd>{{ player.birth_date }}</dd>
+              <dd>{{ player.birth_date || '待完善' }}</dd>
             </div>
             <div>
               <dt>所属球队</dt>

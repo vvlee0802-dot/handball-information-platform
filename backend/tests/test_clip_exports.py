@@ -63,6 +63,46 @@ def test_only_verified_events_can_create_clip_export(client: TestClient) -> None
     assert response.json()["detail"] == "Only verified events can be exported"
 
 
+def test_player_highlight_uses_only_selected_player_and_event_types(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    match_id, _, _, player_id = create_match_and_player(client)
+    coach = replace_login(client, email="highlight-coach@example.com", role=UserRole.COACH_ANALYST)
+    video_id = create_video(match_id, coach.id)
+    goal_id = client.post(
+        f"/api/matches/{match_id}/events",
+        json={
+            "video_id": video_id,
+            "event_type": "goal",
+            "timestamp_seconds": 40,
+            "player_id": player_id,
+        },
+    ).json()["id"]
+    client.post(
+        f"/api/matches/{match_id}/events",
+        json={
+            "video_id": video_id,
+            "event_type": "shot",
+            "timestamp_seconds": 20,
+            "player_id": player_id,
+        },
+    )
+    monkeypatch.setattr("app.api.routes.clip_exports.process_clip_export", lambda *_args: None)
+
+    response = client.post(
+        f"/api/matches/{match_id}/player-highlights",
+        json={"player_id": player_id, "event_types": ["goal"]},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["event_ids"] == [goal_id]
+    assert response.json()["export_type"] == "player_highlight"
+    assert response.json()["player_id"] == player_id
+    assert response.json()["event_types"] == ["goal"]
+    assert response.json()["filename"] == f"match-{match_id}-player-{player_id}-highlight.mp4"
+
+
 def test_clip_export_clamps_boundaries_persists_status_and_downloads_mp4(
     client: TestClient,
     tmp_path: Path,

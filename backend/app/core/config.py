@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     video_upload_max_bytes: int = 10 * 1024**3
     video_upload_chunk_bytes: int = 8 * 1024**2
     video_upload_dir: Path = PROJECT_ROOT / "backend" / "uploads"
+    match_report_max_bytes: int = 10 * 1024**2
+    match_report_dir: Path = PROJECT_ROOT / "backend" / "uploads" / "match_reports"
     goal_model_dir: Path = PROJECT_ROOT / "backend" / "model_artifacts" / "goal_detector" / "v2"
 
     model_config = SettingsConfigDict(
@@ -44,6 +46,12 @@ class Settings(BaseSettings):
         if self.goal_model_dir.is_absolute():
             return self.goal_model_dir
         return PROJECT_ROOT / self.goal_model_dir
+
+    @property
+    def match_report_storage_path(self) -> Path:
+        if self.match_report_dir.is_absolute():
+            return self.match_report_dir
+        return PROJECT_ROOT / self.match_report_dir
 
 
 settings = Settings()

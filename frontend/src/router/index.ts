@@ -22,11 +22,22 @@ export default createRouter({
     { path: '/venues', name: 'venues', component: () => import('@/views/VenuesView.vue') },
     { path: '/venues/:venueId', name: 'venue-detail', component: () => import('@/views/VenueDetail.vue') },
 
-    // 保留现有的比赛球员统计原型，后续在 Phase 2 重新接入统一数据源。
+    // Epic 6 球员单场分析与后续个人事件视频。
     { path: '/matches/:matchId/player-stats', name: 'player-stats', component: () => import('@/views/MatchPlayerStats.vue') },
-    { path: '/matches/:matchId/goalkeeper-stats', name: 'goalkeeper-stats', component: () => import('@/views/MatchGoalkeeperStats.vue') },
+    {
+      path: '/matches/:matchId/goalkeeper-stats',
+      name: 'goalkeeper-stats',
+      redirect: (to) => ({ name: 'player-stats', params: { matchId: to.params.matchId } }),
+    },
     { path: '/matches/:matchId/player-stats/:playerId', name: 'match-player-detail', component: () => import('@/views/MatchPlayerDetail.vue') },
-    { path: '/matches/:matchId/goalkeeper-stats/:playerId', name: 'match-goalkeeper-detail', component: () => import('@/views/MatchGoalkeeperDetail.vue') },
+    {
+      path: '/matches/:matchId/goalkeeper-stats/:playerId',
+      name: 'match-goalkeeper-detail',
+      redirect: (to) => ({
+        name: 'match-player-detail',
+        params: { matchId: to.params.matchId, playerId: to.params.playerId },
+      }),
+    },
 
     { path: '/stage/:stageName', redirect: (to) => ({ name: 'matches', query: { stage: String(to.params.stageName) } }) },
     { path: '/:pathMatch(.*)*', redirect: '/' },

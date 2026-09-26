@@ -9,7 +9,9 @@ from app.api.routes.admin_users import router as admin_users_router
 from app.api.routes.competitions import router as competitions_router
 from app.api.routes.events import router as events_router
 from app.api.routes.matches import router as matches_router
+from app.api.routes.match_reports import router as match_reports_router
 from app.api.routes.players import router as players_router
+from app.api.routes.player_stats import router as player_stats_router
 from app.api.routes.teams import router as teams_router
 from app.api.routes.venues import router as venues_router
 from app.api.routes.videos import router as videos_router
@@ -27,7 +29,9 @@ app.include_router(admin_users_router)
 app.include_router(competitions_router)
 app.include_router(events_router)
 app.include_router(matches_router)
+app.include_router(match_reports_router)
 app.include_router(players_router)
+app.include_router(player_stats_router)
 app.include_router(teams_router)
 app.include_router(venues_router)
 app.include_router(videos_router)

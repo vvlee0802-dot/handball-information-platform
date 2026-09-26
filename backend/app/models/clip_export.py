@@ -21,6 +21,13 @@ class ClipExport(Base):
     )
     storage_key: Mapped[str | None] = mapped_column(String(500), unique=True, nullable=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    export_type: Mapped[str] = mapped_column(
+        String(30), default="event_clips", server_default="event_clips", nullable=False
+    )
+    player_id: Mapped[int | None] = mapped_column(
+        ForeignKey("players.id", ondelete="RESTRICT"), index=True, nullable=True
+    )
+    event_types: Mapped[str | None] = mapped_column(String(255), nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

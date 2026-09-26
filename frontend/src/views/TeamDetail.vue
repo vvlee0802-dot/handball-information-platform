@@ -270,8 +270,8 @@ onMounted(loadTeam)
                       player.name
                     }}</RouterLink>
                   </td>
-                  <td>{{ player.position }}</td>
-                  <td>{{ player.birth_date }}</td>
+                  <td>{{ player.position || '待完善' }}</td>
+                  <td>{{ player.birth_date || '待完善' }}</td>
                 </tr>
               </tbody>
             </table>

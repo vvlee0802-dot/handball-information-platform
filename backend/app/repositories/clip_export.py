@@ -11,11 +11,17 @@ def create_clip_export(
     user_id: int,
     event_ids: list[int],
     filename: str,
+    export_type: str = "event_clips",
+    player_id: int | None = None,
+    event_types: list[str] | None = None,
 ) -> ClipExport:
     clip_export = ClipExport(
         match_id=match_id,
         created_by_user_id=user_id,
         filename=filename,
+        export_type=export_type,
+        player_id=player_id,
+        event_types=",".join(event_types) if event_types else None,
     )
     db.add(clip_export)
     db.flush()

@@ -9,6 +9,7 @@ EventType = Literal[
     "shot",
     "save",
     "turnover",
+    "fast_break",
     "foul",
     "suspension",
     "timeout",

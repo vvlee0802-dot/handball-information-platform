@@ -187,7 +187,7 @@ onMounted(loadData)
           class="list-card"
           :to="{ name: 'player-detail', params: { playerId: player.id } }"
         >
-          <span class="meta-chip">#{{ player.number }} · {{ player.position }}</span>
+          <span class="meta-chip">#{{ player.number }} · {{ player.position || '资料待完善' }}</span>
           <div>
             <h2>{{ player.name }}</h2>
             <p>{{ teamMap.get(player.team_id)?.name || '未知球队' }}</p>

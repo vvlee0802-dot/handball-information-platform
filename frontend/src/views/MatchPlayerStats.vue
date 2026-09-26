@@ -1,312 +1,198 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
+
+import AppHeader from '@/components/AppHeader.vue'
+import {
+  getMatchPlayerStats,
+  type MatchPlayerStatsRecord,
+  type PlayerMatchStatsRecord,
+} from '@/services/playerStats'
+
+const route = useRoute()
+const stats = ref<MatchPlayerStatsRecord | null>(null)
+const loading = ref(true)
+const error = ref('')
+
+const matchId = computed(() => Number(route.params.matchId))
+const homePlayers = computed(() =>
+  stats.value?.players.filter((player) => player.team_id === stats.value?.home_team_id) ?? [],
+)
+const awayPlayers = computed(() =>
+  stats.value?.players.filter((player) => player.team_id === stats.value?.away_team_id) ?? [],
+)
+
+const teamTotals = (players: PlayerMatchStatsRecord[]) => ({
+  goals: players.reduce((sum, player) => sum + player.goals, 0),
+})
+
+const load = async () => {
+  if (!Number.isInteger(matchId.value) || matchId.value <= 0) {
+    error.value = '比赛编号无效。'
+    loading.value = false
+    return
+  }
+  try {
+    stats.value = await getMatchPlayerStats(matchId.value)
+  } catch (loadError) {
+    error.value = loadError instanceof Error ? loadError.message : '球员统计加载失败。'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(load)
+</script>
+
 <template>
-  <div class="match-stats-page">
-    <header class="header">
-      <div class="header-left">
-        <h1 class="page-title">比赛详情</h1>
-        <div class="role-tabs">
-          <span class="role-tab active">非守门员</span>
-          <RouterLink class="role-tab" :to="{ name: 'goalkeeper-stats', params: { matchId } }">守门员</RouterLink>
-        </div>
+  <div class="page-shell">
+    <AppHeader />
+    <main class="page-container">
+      <RouterLink class="back-link" :to="{ name: 'match-detail', params: { matchId } }">
+        ← 返回比赛详情
+      </RouterLink>
+
+      <div v-if="loading" class="detail-card empty-state">正在计算球员单场统计…</div>
+      <div v-else-if="error" class="detail-card empty-state stats-error">
+        <strong>统计加载失败</strong>
+        <p>{{ error }}</p>
       </div>
-      <nav class="header-nav">
-        <RouterLink to="/" class="nav-link">首页</RouterLink>
-        <RouterLink to="/teams" class="nav-link">队伍</RouterLink>
-        <RouterLink to="/players" class="nav-link">运动员</RouterLink>
-      </nav>
-    </header>
 
-    <main class="content">
-      <button class="back-btn" @click="$router.back()">‹</button>
+      <template v-else-if="stats">
+        <section class="stats-hero">
+          <div>
+            <p class="eyebrow">Player Match Statistics</p>
+            <h1>{{ stats.home_team_name }} vs {{ stats.away_team_name }}</h1>
+            <p>球员进球数以已确认的官方赛后统计表为准，不依赖人工视频标注。</p>
+          </div>
+          <div class="stats-score" aria-label="比赛比分">
+            <span>{{ stats.home_score ?? '—' }}</span>
+            <small>:</small>
+            <span>{{ stats.away_score ?? '—' }}</span>
+          </div>
+        </section>
 
-      <section class="match-table-card">
-        <table class="match-table">
-          <thead>
-            <tr>
-              <th colspan="9" class="match-title">东京奥运会手球比赛男子组小组赛A组</th>
-            </tr>
-            <tr>
-              <th colspan="2">法国</th>
-              <th colspan="2">20</th>
-              <th>26</th>
-              <th colspan="4">丹麦</th>
-            </tr>
-            <tr>
-              <th>号码</th>
-              <th>姓名</th>
-              <th>得分</th>
-              <th>进球</th>
-              <th>时间</th>
-              <th>进球</th>
-              <th>得分</th>
-              <th>号码</th>
-              <th>姓名</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in rows"
-              :key="row.id"
-              class="player-row"
-              @click="goToDetail(row)"
-            >
-              <td>{{ row.numberA }}</td>
-              <td>{{ row.nameA }}</td>
-              <td>{{ row.scoreA }}</td>
-              <td>
-                <span v-for="goal in row.goalsA" :key="goal.id" class="event-pill">
-                  {{ goal.label }}
-                  <button class="video-btn" @click.stop="playVideo(goal.videoUrl)">▻</button>
-                </span>
-              </td>
-              <td class="time-cell">
-                <span v-for="time in row.times" :key="time">{{ time }}</span>
-              </td>
-              <td>
-                <span v-for="goal in row.goalsB" :key="goal.id" class="event-pill event-pill--right">
-                  {{ goal.label }}
-                  <button class="video-btn" @click.stop="playVideo(goal.videoUrl)">▻</button>
-                </span>
-              </td>
-              <td>{{ row.scoreB }}</td>
-              <td>{{ row.numberB }}</td>
-              <td>{{ row.nameB }}</td>
-            </tr>
-            <tr v-for="index in 5" :key="`empty-${index}`" class="empty-row">
-              <td v-for="cell in 9" :key="cell"></td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
+        <aside
+          class="calculation-note"
+          :class="{ 'calculation-note-warning': stats.goal_source === 'unavailable' }"
+          role="note"
+        >
+          <strong>{{ stats.goal_source === 'official_report' ? '官方统计' : '暂无官方统计' }}</strong>
+          <span v-if="stats.goal_source === 'official_report'">
+            已读取官方赛后统计表中的球员进球数；暂不统计射门、扑救、失误、快攻和命中率。
+          </span>
+          <span v-else>
+            请先在比赛详情上传并确认官方赛后统计表。系统不会使用人工事件代替官方数据。
+          </span>
+        </aside>
+
+        <section
+          v-for="team in [
+            { id: stats.home_team_id, name: stats.home_team_name, players: homePlayers },
+            { id: stats.away_team_id, name: stats.away_team_name, players: awayPlayers },
+          ]"
+          :key="team.id"
+          class="team-stats"
+        >
+          <div class="team-heading">
+            <div>
+              <p class="eyebrow">Team</p>
+              <h2>{{ team.name }}</h2>
+            </div>
+            <div class="team-summary">
+              <span>进球 <strong>{{ teamTotals(team.players).goals }}</strong></span>
+            </div>
+          </div>
+
+          <div class="table-panel stats-table-wrap">
+            <table class="data-table stats-table">
+              <thead>
+                <tr>
+                  <th>号码</th>
+                  <th>球员</th>
+                  <th>位置</th>
+                  <th>进球</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="player in team.players" :key="player.player_id">
+                  <td><span class="number-badge">{{ player.player_number }}</span></td>
+                  <td>
+                    <RouterLink
+                      :to="{
+                        name: 'match-player-detail',
+                        params: { matchId, playerId: player.player_id },
+                      }"
+                    >
+                      {{ player.player_name }}
+                    </RouterLink>
+                  </td>
+                  <td>{{ player.position || '待完善' }}</td>
+                  <td><strong class="goal-value">{{ player.goals }}</strong></td>
+                  <td>
+                    <RouterLink
+                      class="player-analysis-link"
+                      :to="{
+                        name: 'match-player-detail',
+                        params: { matchId, playerId: player.player_id },
+                      }"
+                    >
+                      查看事件与生成集锦 →
+                    </RouterLink>
+                  </td>
+                </tr>
+                <tr v-if="team.players.length === 0">
+                  <td colspan="5" class="empty-state">该队尚未录入球员。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </template>
     </main>
   </div>
 </template>
 
-<script setup lang="ts">
-import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-
-interface EventVideo {
-  id: number
-  label: string
-  videoUrl: string
-}
-
-interface PlayerStatsRow {
-  id: number
-  numberA: number
-  nameA: string
-  scoreA: number
-  goalsA: EventVideo[]
-  times: string[]
-  goalsB: EventVideo[]
-  scoreB: number | string
-  numberB: number | string
-  nameB: string
-}
-
-const route = useRoute()
-const router = useRouter()
-const matchId = computed(() => String(route.params.matchId))
-
-const rows: PlayerStatsRow[] = [
-  {
-    id: 1,
-    numberA: 1,
-    nameA: 'A',
-    scoreA: 2,
-    goalsA: [{ id: 1, label: '1', videoUrl: '#' }],
-    times: ['1:02', '2:52'],
-    goalsB: [{ id: 2, label: '1', videoUrl: '#' }],
-    scoreB: 2,
-    numberB: 1,
-    nameB: 'A',
-  },
-  {
-    id: 2,
-    numberA: 2,
-    nameA: 'B',
-    scoreA: 1,
-    goalsA: [{ id: 3, label: '1', videoUrl: '#' }, { id: 4, label: '2', videoUrl: '#' }],
-    times: ['3:52', '4:52'],
-    goalsB: [{ id: 5, label: '1', videoUrl: '#' }],
-    scoreB: '',
-    numberB: '',
-    nameB: '',
-  },
-]
-
-const goToDetail = (row: PlayerStatsRow) => {
-  router.push({
-    name: 'match-player-detail',
-    params: { matchId: matchId.value, playerId: row.id },
-    query: { player: row.nameA || row.nameB },
-  })
-}
-
-const playVideo = (url: string) => {
-  console.log('播放视频:', url)
-}
-</script>
-
 <style scoped>
-.match-stats-page {
-  width: 100vw;
-  min-height: 100vh;
-  background: #f4f4f4;
-  color: #111;
-}
-
-.header {
-  background: #d8d8d8;
+.stats-hero {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 28px;
+  gap: 32px;
+  padding: 28px 30px;
+  border-radius: 20px;
+  color: white;
+  background: linear-gradient(135deg, #1d43b7, #315bd8 60%, #6684ea);
+  box-shadow: 0 18px 42px rgba(35, 69, 170, 0.2);
 }
-
-.header-left {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 16px;
-}
-
-.role-tabs {
-  display: flex;
-  gap: 28px;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.role-tab {
-  color: #111;
-  text-decoration: none;
-}
-
-.role-tab.active {
-  border-bottom: 2px solid #111;
-}
-
-.header-nav {
-  display: flex;
-  gap: 34px;
-}
-
-.nav-link {
-  color: #111;
-  font-size: 15px;
-  text-decoration: none;
-}
-
-.content {
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 28px 28px 64px;
-}
-
-.back-btn {
-  width: 26px;
-  height: 26px;
-  border: 1px solid #222;
-  border-radius: 999px;
-  background: white;
-  cursor: pointer;
-  font-size: 24px;
-  line-height: 20px;
-  margin-bottom: 24px;
-}
-
-.match-table-card {
-  max-width: 920px;
-  margin: 0 auto;
-}
-
-.match-table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  background: #bdf8ca;
-}
-
-.match-table th,
-.match-table td {
-  border: 1px solid rgba(40, 100, 60, 0.45);
-  height: 52px;
-  text-align: center;
-  font-size: 15px;
-}
-
-.match-table th {
-  font-weight: 700;
-}
-
-.match-title {
-  height: 58px;
-}
-
-.player-row {
-  cursor: pointer;
-}
-
-.player-row:hover td {
-  background: #aef1bc;
-}
-
-.empty-row td {
-  height: 60px;
-}
-
-.time-cell {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6px;
-}
-
-.event-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 46px;
-  justify-content: center;
-  background: #d8d8d8;
-  padding: 3px 7px;
-  margin: 3px;
-}
-
-.event-pill--right {
-  background: #e4d5e4;
-}
-
-.video-btn {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-  font-size: 12px;
-}
+.stats-hero h1 { margin: 0; font-size: clamp(28px, 4vw, 42px); }
+.stats-hero p:last-child { margin: 10px 0 0; color: rgba(255, 255, 255, 0.8); }
+.stats-hero .eyebrow { color: #dce5ff; }
+.stats-score { display: flex; align-items: center; gap: 14px; font-size: 42px; font-weight: 800; }
+.stats-score small { color: rgba(255, 255, 255, 0.6); font-size: 24px; }
+.calculation-note { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; padding: 15px 18px; border: 1px solid #cbd8fb; border-radius: 14px; color: #42506a; background: #f3f6ff; font-size: 13px; }
+.calculation-note strong { color: #2346ad; }
+.calculation-note-warning { border-color: #f2d19a; background: #fff8e8; }
+.calculation-note-warning strong { color: #9a5b08; }
+.team-stats { margin-top: 34px; }
+.team-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.team-heading h2 { margin: 0; font-size: 24px; }
+.team-summary { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.team-summary span { padding: 7px 10px; border-radius: 999px; color: #596277; background: #eef1f6; font-size: 12px; }
+.team-summary strong { margin-left: 4px; color: #1e3f9e; }
+.stats-table-wrap { margin-top: 14px; overflow-x: auto; }
+.stats-table { min-width: 560px; }
+.goal-value { color: var(--primary-dark); font-size: 18px; }
+.player-analysis-link { display: inline-flex; min-width: 150px; color: var(--primary); font-size: 13px; font-weight: 750; text-decoration: none; }
+.player-analysis-link:hover { color: var(--primary-dark); text-decoration: underline; }
+.number-badge { display: inline-grid; width: 32px; height: 32px; place-items: center; border-radius: 9px; color: white; background: var(--primary); font-weight: 800; }
+.stats-error strong { color: var(--danger); }
+.stats-error p { margin-bottom: 0; }
 
 @media (max-width: 760px) {
-  .header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .content {
-    padding-inline: 16px;
-  }
-
-  .match-table-card {
-    overflow-x: auto;
-  }
-
-  .match-table {
-    min-width: 820px;
-  }
+  .stats-hero, .team-heading { align-items: flex-start; flex-direction: column; }
+  .stats-score { font-size: 34px; }
+  .team-summary { justify-content: flex-start; }
 }
 </style>

@@ -50,6 +50,18 @@ def require_permission(permission: Permission):
     return check_permission
 
 
+def require_any_permission(*permissions: Permission):
+    def check_permissions(current_user: CurrentUser) -> User:
+        if not any(has_permission(current_user, permission) for permission in permissions):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return current_user
+
+    return check_permissions
+
+
 ManageCompetitionDataUser = Annotated[
     User,
     Depends(require_permission(Permission.MANAGE_COMPETITION_DATA)),
@@ -65,4 +77,13 @@ ViewAuthorizedVideoUser = Annotated[
 UploadVideoUser = Annotated[
     User,
     Depends(require_permission(Permission.UPLOAD_AND_ANNOTATE_VIDEO)),
+]
+ManageMatchReportUser = Annotated[
+    User,
+    Depends(
+        require_any_permission(
+            Permission.MANAGE_COMPETITION_DATA,
+            Permission.GENERATE_REPORTS,
+        )
+    ),
 ]

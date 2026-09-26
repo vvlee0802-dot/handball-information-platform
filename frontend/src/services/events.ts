@@ -5,6 +5,7 @@ export type EventType =
   | 'shot'
   | 'save'
   | 'turnover'
+  | 'fast_break'
   | 'foul'
   | 'suspension'
   | 'timeout'
@@ -56,6 +57,7 @@ export const eventTypeLabels: Record<EventType, string> = {
   shot: '射门',
   save: '扑救',
   turnover: '失误/球权转换',
+  fast_break: '快攻',
   foul: '犯规',
   suspension: '两分钟处罚',
   timeout: '暂停',

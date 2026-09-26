@@ -1,4 +1,5 @@
 import { apiRequest } from '@/services/http'
+import type { EventType } from '@/services/events'
 
 export type ClipExportStatus = 'queued' | 'processing' | 'completed' | 'failed'
 
@@ -9,6 +10,9 @@ export interface ClipExportRecord {
   event_ids: number[]
   status: ClipExportStatus
   filename: string
+  export_type: 'event_clips' | 'player_highlight'
+  player_id: number | null
+  event_types: EventType[]
   size_bytes: number | null
   duration_seconds: number | null
   failure_reason: string | null
@@ -24,6 +28,16 @@ export const createClipExport = (matchId: number, eventIds: number[]) =>
   apiRequest<ClipExportRecord>(`/api/matches/${matchId}/clip-exports`, {
     method: 'POST',
     body: JSON.stringify({ event_ids: eventIds }),
+  })
+
+export const createPlayerHighlight = (
+  matchId: number,
+  playerId: number,
+  eventTypes: EventType[],
+) =>
+  apiRequest<ClipExportRecord>(`/api/matches/${matchId}/player-highlights`, {
+    method: 'POST',
+    body: JSON.stringify({ player_id: playerId, event_types: eventTypes }),
   })
 
 export const deleteClipExport = (clipExportId: number) =>

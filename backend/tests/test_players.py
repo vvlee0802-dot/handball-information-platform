@@ -42,6 +42,13 @@ def test_create_list_get_and_update_player(client: TestClient) -> None:
 
 
 def test_player_rejects_missing_team_and_invalid_data(client: TestClient) -> None:
+    team_id = create_team(client)
+    incomplete = client.post(
+        "/api/players",
+        json={"name": "缺少资料", "number": 8, "team_id": team_id},
+    )
+    assert incomplete.status_code == 422
+
     response = client.post(
         "/api/players",
         json={

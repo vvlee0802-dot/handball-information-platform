@@ -45,6 +45,14 @@ import {
   type MatchInput,
   type MatchRecord,
 } from '@/services/matches'
+import {
+  confirmOfficialMatchReport,
+  getLatestOfficialMatchReport,
+  previewOfficialMatchReport,
+  type MatchReportPreview,
+  type MatchReportRecord,
+} from '@/services/matchReports'
+import { reassignEventPlayers } from '@/services/playerStats'
 import { listTeams, type TeamRecord } from '@/services/teams'
 import { listPlayers, type PlayerRecord } from '@/services/players'
 import { listVenues, type VenueRecord } from '@/services/venues'
@@ -80,6 +88,17 @@ const loading = ref(true),
 const error = ref(''),
   message = ref(''),
   deleteError = ref('')
+const reportInput = ref<HTMLInputElement | null>(null)
+const selectedReport = ref<File | null>(null)
+const reportPreview = ref<MatchReportPreview | null>(null)
+const officialReport = ref<MatchReportRecord | null>(null)
+const reportTeamAId = ref<number | null>(null)
+const reportTeamBId = ref<number | null>(null)
+const reportConflictAccepted = ref(false)
+const reportLoading = ref(false)
+const reportConfirming = ref(false)
+const reportError = ref('')
+const reportMessage = ref('')
 const videos = ref<VideoRecord[]>([])
 const uploadPolicy = ref<VideoUploadPolicy | null>(null)
 const selectedVideo = ref<File | null>(null)
@@ -103,6 +122,14 @@ const uploading = ref(false)
 const retryingVideoId = ref<number | null>(null)
 const deletingVideoId = ref<number | null>(null)
 const events = ref<MatchEventRecord[]>([])
+const timelineGoalEvents = ref<MatchEventRecord[]>([])
+const timelinePreviewEvent = ref<MatchEventRecord | null>(null)
+const timelinePreviewPlayer = ref<HTMLVideoElement | null>(null)
+const timelineCorrectionSelections = reactive<Record<number, number | ''>>({})
+const reviewedTimelineEventIds = ref<number[]>([])
+const savingTimelineCorrectionId = ref<number | null>(null)
+const timelineCorrectionError = ref('')
+const timelineCorrectionMessage = ref('')
 const selectedPlaybackVideoId = ref<number | null>(null)
 const videoPlayer = ref<HTMLVideoElement | null>(null)
 const annotationFullscreenContainer = ref<HTMLElement | null>(null)
@@ -177,6 +204,14 @@ const competition = computed(() =>
 const home = computed(() => teams.value.find((x) => x.id === match.value?.home_team_id))
 const away = computed(() => teams.value.find((x) => x.id === match.value?.away_team_id))
 const venue = computed(() => venues.value.find((x) => x.id === match.value?.venue_id))
+const reportParticipantTeams = computed(() =>
+  [home.value, away.value].filter((team): team is TeamRecord => Boolean(team)),
+)
+const canManageOfficialReports = computed(
+  () =>
+    authStore.hasPermission('manage_competition_data') ||
+    authStore.hasPermission('generate_reports'),
+)
 const playbackVideo = computed(() =>
   videos.value.find((video) => video.id === selectedPlaybackVideoId.value),
 )
@@ -228,6 +263,124 @@ const selectedVerifiedEvents = computed(() =>
       event.status === 'verified' && selectedClipEventIds.value.includes(event.id),
   ),
 )
+const officialGoalTotal = computed(
+  () =>
+    officialReport.value?.player_stats.reduce((sum, player) => sum + player.goals, 0) ?? 0,
+)
+const timelineGoalEntries = computed(() => {
+  if (!match.value) return []
+  let homeScore = 0
+  let awayScore = 0
+  return [...timelineGoalEvents.value]
+    .sort((left, right) => left.timestamp_seconds - right.timestamp_seconds)
+    .map((event, index) => {
+      const resolvedTeamId = resolveTimelineTeamId(event)
+      if (resolvedTeamId === match.value?.home_team_id) homeScore += 1
+      if (resolvedTeamId === match.value?.away_team_id) awayScore += 1
+      const player = resolveTimelinePlayer(event, resolvedTeamId)
+      return {
+        event,
+        sequence: index + 1,
+        side: resolvedTeamId === match.value?.home_team_id ? 'home' : 'away',
+        playerId: player?.id ?? null,
+        playerLabel: player
+          ? `#${player.number} ${player.name}`
+          : event.note?.trim() || '进球队员待确认',
+        score: `${homeScore} : ${awayScore}`,
+      }
+    })
+})
+const timelinePlayerDiscrepancies = computed(() => {
+  if (!officialReport.value) return []
+  const timelineCounts = new Map<number, number>()
+  for (const entry of timelineGoalEntries.value) {
+    if (entry.playerId !== null) {
+      timelineCounts.set(entry.playerId, (timelineCounts.get(entry.playerId) ?? 0) + 1)
+    }
+  }
+  return officialReport.value.player_stats
+    .map((stat) => ({
+      playerId: stat.player_id,
+      teamId: stat.team_id,
+      playerLabel: `#${stat.number} ${stat.player_name}`,
+      timelineGoals: stat.player_id === null ? 0 : (timelineCounts.get(stat.player_id) ?? 0),
+      officialGoals: stat.goals,
+    }))
+    .filter((row) => row.timelineGoals !== row.officialGoals)
+})
+const timelineTeamDiscrepancies = computed(() => {
+  if (!officialReport.value) return []
+  const timelineCounts = new Map<number, number>()
+  for (const entry of timelineGoalEntries.value) {
+    const teamId = resolveTimelineTeamId(entry.event)
+    if (teamId !== null) timelineCounts.set(teamId, (timelineCounts.get(teamId) ?? 0) + 1)
+  }
+  return officialReport.value.team_stats
+    .map((stat) => ({
+      teamId: stat.team_id,
+      teamName: teams.value.find((team) => team.id === stat.team_id)?.name ?? '未知球队',
+      timelineGoals: timelineCounts.get(stat.team_id) ?? 0,
+      officialGoals: stat.final_score,
+    }))
+    .filter((row) => row.timelineGoals !== row.officialGoals)
+})
+const timelineHasUnresolvedEntries = computed(() =>
+  timelineGoalEntries.value.some(
+    (entry) => entry.playerId === null || resolveTimelineTeamId(entry.event) === null,
+  ),
+)
+const timelineHasConflicts = computed(
+  () =>
+    timelineGoalEntries.value.length !== officialGoalTotal.value ||
+    timelineTeamDiscrepancies.value.length > 0 ||
+    timelinePlayerDiscrepancies.value.length > 0 ||
+    timelineHasUnresolvedEntries.value,
+)
+const timelineCorrectionPlayers = computed(() => {
+  if (!officialReport.value) return []
+  const officialPlayerIds = new Set(
+    officialReport.value.player_stats
+      .map((stat) => stat.player_id)
+      .filter((id): id is number => id !== null),
+  )
+  return participantPlayers.value
+    .filter((player) => officialPlayerIds.has(player.id))
+    .sort((left, right) => left.team_id - right.team_id || left.number - right.number)
+})
+const timelineConflictEvents = computed(() => {
+  const overCountedPlayerIds = new Set(
+    timelinePlayerDiscrepancies.value
+      .filter(
+        (row) => row.playerId !== null && row.timelineGoals > row.officialGoals,
+      )
+      .map((row) => row.playerId as number),
+  )
+  const overCountedTeamIds = new Set(
+    timelineTeamDiscrepancies.value
+      .filter((row) => row.timelineGoals > row.officialGoals)
+      .map((row) => row.teamId),
+  )
+  return timelineGoalEntries.value.filter((entry) => {
+    const teamId = resolveTimelineTeamId(entry.event)
+    return (
+      entry.playerId === null ||
+      teamId === null ||
+      (entry.playerId !== null && overCountedPlayerIds.has(entry.playerId)) ||
+      (teamId !== null && overCountedTeamIds.has(teamId))
+    )
+  })
+})
+const timelinePreviewVideo = computed(() =>
+  videos.value.find((video) => video.id === timelinePreviewEvent.value?.video_id),
+)
+const timelinePreviewStart = computed(() =>
+  Math.max(0, (timelinePreviewEvent.value?.timestamp_seconds ?? 0) - 8),
+)
+const timelinePreviewEnd = computed(() => {
+  const requestedEnd = (timelinePreviewEvent.value?.timestamp_seconds ?? 0) + 5
+  const duration = timelinePreviewVideo.value?.duration_seconds
+  return duration === null || duration === undefined ? requestedEnd : Math.min(duration, requestedEnd)
+})
 const scoresEnabled = computed(() => form.status === 'live' || form.status === 'completed')
 const processingLabels: Record<VideoProcessingStatus, string> = {
   queued: '等待处理',
@@ -461,18 +614,130 @@ const reviewFalsePositive = async (
 const loadEvents = async () => {
   if (!match.value || !authStore.hasPermission('view_authorized_video')) return
   try {
-    events.value = await listMatchEvents(match.value.id, {
-      event_type: eventFilters.event_type || undefined,
-      team_id: eventFilters.team_id ?? undefined,
-      player_id: eventFilters.player_id ?? undefined,
-      status: eventFilters.status || undefined,
-    })
+    const [filteredEvents, verifiedGoals] = await Promise.all([
+      listMatchEvents(match.value.id, {
+        event_type: eventFilters.event_type || undefined,
+        team_id: eventFilters.team_id ?? undefined,
+        player_id: eventFilters.player_id ?? undefined,
+        status: eventFilters.status || undefined,
+      }),
+      listMatchEvents(match.value.id, { event_type: 'goal', status: 'verified' }),
+    ])
+    events.value = filteredEvents
+    timelineGoalEvents.value = verifiedGoals
     const selectableIds = new Set(
       events.value.filter((event) => event.status === 'verified').map((event) => event.id),
     )
     selectedClipEventIds.value = selectedClipEventIds.value.filter((id) => selectableIds.has(id))
   } catch (e) {
     eventError.value = e instanceof Error ? e.message : '事件记录加载失败'
+  }
+}
+
+function resolveTimelineTeamId(event: MatchEventRecord): number | null {
+  const note = event.note ?? ''
+  const namedTeam = reportParticipantTeams.value.find(
+    (team) => note.includes(team.name) || note.includes(team.short_name),
+  )
+  return namedTeam?.id ?? event.team_id
+}
+
+function resolveTimelinePlayer(
+  event: MatchEventRecord,
+  resolvedTeamId: number | null,
+): PlayerRecord | null {
+  if (event.player_id !== null) {
+    return players.value.find((player) => player.id === event.player_id) ?? null
+  }
+  const numberMatch = event.note?.match(/(?:#|队)?\s*(\d{1,2})(?:\s*号)?/)
+  if (!numberMatch || resolvedTeamId === null) return null
+  const number = Number(numberMatch[1])
+  return (
+    participantPlayers.value.find(
+      (player) => player.team_id === resolvedTeamId && player.number === number,
+    ) ?? null
+  )
+}
+
+const canPreviewTimelineEvent = (event: MatchEventRecord) =>
+  videos.value.some(
+    (video) => video.id === event.video_id && video.processing_status === 'completed',
+  )
+
+const openTimelinePreview = async (event: MatchEventRecord) => {
+  if (!canPreviewTimelineEvent(event)) return
+  timelinePreviewEvent.value = event
+  await nextTick()
+  startTimelinePreview()
+}
+
+const startTimelinePreview = () => {
+  if (!timelinePreviewPlayer.value || timelinePreviewPlayer.value.readyState === 0) return
+  timelinePreviewPlayer.value.currentTime = timelinePreviewStart.value
+  void timelinePreviewPlayer.value.play().catch(() => undefined)
+}
+
+const limitTimelinePreview = () => {
+  if (
+    timelinePreviewPlayer.value &&
+    timelinePreviewPlayer.value.currentTime >= timelinePreviewEnd.value
+  ) {
+    timelinePreviewPlayer.value.pause()
+  }
+}
+
+const closeTimelinePreview = () => {
+  timelinePreviewPlayer.value?.pause()
+  timelinePreviewEvent.value = null
+}
+
+const selectedTimelineCorrectionPlayerId = (entry: (typeof timelineGoalEntries.value)[number]) =>
+  timelineCorrectionSelections[entry.event.id] ?? entry.playerId ?? ''
+
+const setTimelineCorrectionPlayer = (eventId: number, value: string) => {
+  timelineCorrectionSelections[eventId] = value === '' ? '' : Number(value)
+}
+
+const isTimelineEventReviewed = (eventId: number) =>
+  reviewedTimelineEventIds.value.includes(eventId)
+
+const reopenTimelineCorrection = (eventId: number) => {
+  reviewedTimelineEventIds.value = reviewedTimelineEventIds.value.filter((id) => id !== eventId)
+  timelineCorrectionError.value = ''
+  timelineCorrectionMessage.value = '已重新打开该片段，请修改球员并再次保存。'
+}
+
+const saveTimelineCorrection = async (entry: (typeof timelineGoalEntries.value)[number]) => {
+  if (!match.value) return
+  const selectedPlayerId = selectedTimelineCorrectionPlayerId(entry)
+  if (selectedPlayerId === '') {
+    timelineCorrectionError.value = '请先选择核对后的进球队员。'
+    return
+  }
+  const selectedPlayer = timelineCorrectionPlayers.value.find(
+    (player) => player.id === selectedPlayerId,
+  )
+  if (!selectedPlayer) {
+    timelineCorrectionError.value = '所选球员不在本场官方名单中。'
+    return
+  }
+  savingTimelineCorrectionId.value = entry.event.id
+  timelineCorrectionError.value = ''
+  timelineCorrectionMessage.value = ''
+  try {
+    await reassignEventPlayers(match.value.id, [entry.event.id], selectedPlayer.id)
+    if (!reviewedTimelineEventIds.value.includes(entry.event.id)) {
+      reviewedTimelineEventIds.value.push(entry.event.id)
+    }
+    delete timelineCorrectionSelections[entry.event.id]
+    await loadEvents()
+    timelineCorrectionMessage.value = timelineHasConflicts.value
+      ? '该片段已核对并保存。按钮已锁定，如需修改请点击“重新审核”。'
+      : '所有进球数据已与官方统计一致，比赛事件流程已生成。'
+  } catch (e) {
+    timelineCorrectionError.value = e instanceof Error ? e.message : '冲突修正保存失败'
+  } finally {
+    savingTimelineCorrectionId.value = null
   }
 }
 
@@ -987,6 +1252,126 @@ const removeVideo = async (video: VideoRecord) => {
   }
 }
 
+const loadOfficialReport = async () => {
+  if (!match.value) return
+  try {
+    officialReport.value = await getLatestOfficialMatchReport(match.value.id)
+  } catch (e) {
+    reportError.value = e instanceof Error ? e.message : '官方统计加载失败'
+  }
+}
+
+const chooseOfficialReport = (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0] ?? null
+  selectedReport.value = file
+  reportPreview.value = null
+  reportConflictAccepted.value = false
+  reportError.value = ''
+  reportMessage.value = ''
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    reportError.value = '当前只支持 PDF 赛后统计表。'
+  } else if (file.size > 10 * 1024 * 1024) {
+    reportError.value = 'PDF 不能超过 10 MiB。'
+  }
+}
+
+const previewReport = async () => {
+  if (!match.value || !selectedReport.value || reportError.value) return
+  reportLoading.value = true
+  reportError.value = ''
+  reportMessage.value = ''
+  try {
+    const preview = await previewOfficialMatchReport(match.value.id, selectedReport.value)
+    reportPreview.value = preview
+    reportTeamAId.value = preview.suggested_team_a_team_id
+    reportTeamBId.value = preview.suggested_team_b_team_id
+    reportConflictAccepted.value = preview.conflicts.length === 0
+    if (preview.status === 'imported') {
+      reportMessage.value = '该统计表已经导入，没有重复写入数据。'
+      await loadOfficialReport()
+    } else if (preview.duplicate) {
+      reportMessage.value = '已找到相同文件的待确认预览。'
+    }
+  } catch (e) {
+    reportError.value = e instanceof Error ? e.message : '统计表解析失败'
+  } finally {
+    reportLoading.value = false
+  }
+}
+
+const confirmReport = async () => {
+  if (
+    !match.value ||
+    !reportPreview.value ||
+    reportTeamAId.value === null ||
+    reportTeamBId.value === null
+  )
+    return
+  if (reportPreview.value.conflicts.length > 0 && !reportConflictAccepted.value) {
+    reportError.value = '请先确认已检查冲突信息。'
+    return
+  }
+  reportConfirming.value = true
+  reportError.value = ''
+  try {
+    officialReport.value = await confirmOfficialMatchReport(
+      match.value.id,
+      reportPreview.value.id,
+      {
+        team_a_team_id: reportTeamAId.value,
+        team_b_team_id: reportTeamBId.value,
+        accept_conflicts: reportConflictAccepted.value,
+      },
+    )
+    const updatedMatch = await getMatch(match.value.id)
+    match.value = updatedMatch
+    fill(updatedMatch)
+    reportPreview.value = null
+    selectedReport.value = null
+    if (reportInput.value) reportInput.value.value = ''
+    reportMessage.value = '官方统计已导入，比分、名单和汇总数据已更新。'
+  } catch (e) {
+    reportError.value = e instanceof Error ? e.message : '统计表导入失败'
+  } finally {
+    reportConfirming.value = false
+  }
+}
+
+const reapplyOfficialReport = async () => {
+  if (
+    !match.value ||
+    !officialReport.value ||
+    officialReport.value.team_a_team_id === null ||
+    officialReport.value.team_b_team_id === null
+  )
+    return
+  reportConfirming.value = true
+  reportError.value = ''
+  try {
+    officialReport.value = await confirmOfficialMatchReport(
+      match.value.id,
+      officialReport.value.id,
+      {
+        team_a_team_id: officialReport.value.team_a_team_id,
+        team_b_team_id: officialReport.value.team_b_team_id,
+        accept_conflicts: true,
+      },
+    )
+    const updatedMatch = await getMatch(match.value.id)
+    match.value = updatedMatch
+    fill(updatedMatch)
+    reportMessage.value = '已按官方报告重新同步队伍顺序、比分、日期、时间和比赛阶段。'
+  } catch (e) {
+    reportError.value = e instanceof Error ? e.message : '官方数据同步失败'
+  } finally {
+    reportConfirming.value = false
+  }
+}
+
+const officialPlayersForTeam = (teamId: number) =>
+  officialReport.value?.player_stats.filter((player) => player.team_id === teamId) ?? []
+
 watch(
   [
     () => authStore.initialized,
@@ -1000,6 +1385,7 @@ watch(
     void loadEvents()
     void loadClipExports()
     void loadUploadPolicy()
+    void loadOfficialReport()
   },
   { immediate: true },
 )
@@ -1038,6 +1424,13 @@ onUnmounted(() => {
           </div>
           <div class="detail-actions">
             <div class="score">{{ match.home_score ?? '—' }} : {{ match.away_score ?? '—' }}</div>
+            <RouterLink
+              v-if="authStore.hasPermission('view_authorized_video')"
+              class="button button-secondary"
+              :to="{ name: 'player-stats', params: { matchId: match.id } }"
+            >
+              球员统计与个人集锦
+            </RouterLink>
             <button
               v-if="!editing && authStore.hasPermission('manage_competition_data')"
               class="button button-secondary"
@@ -1158,6 +1551,405 @@ onUnmounted(() => {
           </div>
         </dl>
         <p v-if="message" class="success">{{ message }}</p>
+      </section>
+
+      <section v-if="match" class="detail-card report-section">
+        <div class="video-heading">
+          <div>
+            <p class="eyebrow">Official Match Report</p>
+            <h2 class="section-title">官方赛后统计表</h2>
+            <p class="page-description">
+              上传官方文本型 PDF，先预览比分和名单，确认后才写入数据库。
+            </p>
+          </div>
+          <span v-if="officialReport" class="status-badge status-ready">已导入</span>
+        </div>
+
+        <form
+          v-if="canManageOfficialReports"
+          class="report-upload-form"
+          @submit.prevent="previewReport"
+        >
+          <div class="field">
+            <label for="official-report">选择官方 PDF</label>
+            <input
+              id="official-report"
+              ref="reportInput"
+              type="file"
+              accept=".pdf,application/pdf"
+              :disabled="reportLoading || reportConfirming"
+              @change="chooseOfficialReport"
+            />
+          </div>
+          <button
+            class="button button-primary"
+            :disabled="!selectedReport || Boolean(reportError) || reportLoading"
+          >
+            {{ reportLoading ? '正在解析…' : '解析并预览' }}
+          </button>
+        </form>
+        <p v-if="reportError" class="error">统计表：{{ reportError }}</p>
+        <p v-if="reportMessage" class="success">{{ reportMessage }}</p>
+
+        <div v-if="reportPreview" class="report-preview">
+          <div class="report-preview-heading">
+            <div>
+              <strong>{{ reportPreview.original_filename }}</strong>
+              <span>
+                {{ reportPreview.parsed.competition_stage ?? '未识别阶段' }} ·
+                {{ reportPreview.parsed.match_date ?? '未识别日期' }} ·
+                {{ reportPreview.parsed.venue ?? '未识别场馆' }}
+              </span>
+            </div>
+            <span class="meta-chip">导入前预览</span>
+          </div>
+          <div class="report-score-grid">
+            <article>
+              <span>Team A · {{ reportPreview.parsed.team_a.code }}</span>
+              <strong>{{ reportPreview.parsed.team_a.name }}</strong>
+              <b>{{ reportPreview.parsed.team_a.final_score }}</b>
+              <small>半场 {{ reportPreview.parsed.team_a.half_time_score }}</small>
+            </article>
+            <article>
+              <span>Team B · {{ reportPreview.parsed.team_b.code }}</span>
+              <strong>{{ reportPreview.parsed.team_b.name }}</strong>
+              <b>{{ reportPreview.parsed.team_b.final_score }}</b>
+              <small>半场 {{ reportPreview.parsed.team_b.half_time_score }}</small>
+            </article>
+          </div>
+          <div class="report-mapping-grid">
+            <div class="field">
+              <label>Team A 对应平台球队</label>
+              <select v-model.number="reportTeamAId">
+                <option v-for="team in reportParticipantTeams" :key="team.id" :value="team.id">
+                  {{ team.name }}
+                </option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Team B 对应平台球队</label>
+              <select v-model.number="reportTeamBId">
+                <option v-for="team in reportParticipantTeams" :key="team.id" :value="team.id">
+                  {{ team.name }}
+                </option>
+              </select>
+            </div>
+          </div>
+          <div v-if="reportPreview.conflicts.length" class="report-conflicts">
+            <strong>需要人工确认</strong>
+            <ul>
+              <li v-for="conflict in reportPreview.conflicts" :key="conflict">{{ conflict }}</li>
+            </ul>
+            <label>
+              <input v-model="reportConflictAccepted" type="checkbox" />
+              我已检查队伍映射和冲突，同意使用本次报告数据。
+            </label>
+          </div>
+          <div class="report-rosters">
+            <div v-for="reportTeam in [reportPreview.parsed.team_a, reportPreview.parsed.team_b]" :key="reportTeam.side">
+              <strong>{{ reportTeam.name }} · {{ reportTeam.players.length }} 人</strong>
+              <ul>
+                <li v-for="player in reportTeam.players" :key="`${reportTeam.side}-${player.number}`">
+                  <span>#{{ player.number }} {{ player.name }}</span><b>{{ player.goals }} 球</b>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <button
+            class="button button-primary report-confirm-button"
+            :disabled="
+              reportConfirming ||
+              reportTeamAId === null ||
+              reportTeamBId === null ||
+              reportTeamAId === reportTeamBId ||
+              (reportPreview.conflicts.length > 0 && !reportConflictAccepted)
+            "
+            @click="confirmReport"
+          >
+            {{
+              reportConfirming
+                ? '正在导入…'
+                : reportPreview.status === 'imported'
+                  ? '按报告重新同步比赛'
+                  : '确认并写入数据库'
+            }}
+          </button>
+        </div>
+
+        <div v-if="officialReport" class="official-report-result">
+          <div class="report-preview-heading">
+            <div>
+              <strong>当前官方数据：{{ officialReport.original_filename }}</strong>
+              <span>
+                官方汇总数据仅用于结果和校验，不会生成虚假的视频事件。
+              </span>
+            </div>
+          </div>
+          <div class="report-rosters">
+            <div v-for="team in reportParticipantTeams" :key="team.id">
+              <strong>{{ team.name }}</strong>
+              <ul>
+                <li v-for="player in officialPlayersForTeam(team.id)" :key="player.id">
+                  <span>
+                    #{{ player.number }} {{ player.player_name }}
+                    <small v-if="player.player_id === null">待关联球员</small>
+                  </span>
+                  <b>{{ player.goals }} 球</b>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <button
+            v-if="canManageOfficialReports"
+            class="button button-secondary report-confirm-button"
+            :disabled="reportConfirming"
+            @click="reapplyOfficialReport"
+          >
+            {{ reportConfirming ? '正在同步…' : '按官方报告重新同步比赛' }}
+          </button>
+        </div>
+
+        <section v-if="officialReport" class="match-event-timeline-section">
+          <div class="timeline-heading">
+            <div>
+              <p class="eyebrow">Match Event Flow</p>
+              <h3>比赛事件流程</h3>
+              <p class="page-description">
+                系统会先用官方统计校验已确认进球；存在冲突时需人工核对，数据一致后才生成时间线。
+              </p>
+            </div>
+            <span
+              class="status-badge"
+              :class="timelineHasConflicts ? 'status-processing' : 'status-ready'"
+            >
+              {{ timelineHasConflicts ? '待核对' : '已通过校验' }} ·
+              {{ timelineGoalEntries.length }} / {{ officialGoalTotal }} 个进球
+            </span>
+          </div>
+
+          <div v-if="!authStore.hasPermission('view_authorized_video')" class="timeline-empty">
+            当前账号没有查看比赛录像和事件流程的权限。
+          </div>
+          <div v-else-if="timelineGoalEntries.length === 0" class="timeline-empty">
+            尚无已确认的进球事件。官方进球数已经保存，但还没有可定位的视频时间点。
+          </div>
+          <template v-else>
+            <div v-if="timelineHasConflicts" class="timeline-conflict-review">
+              <div class="timeline-conflict-heading">
+                <div>
+                  <strong>检测到数据冲突，时间线暂未生成</strong>
+                  <p>请播放下方可疑片段，确认真正的进球队员并保存。每次保存后系统会重新校验。</p>
+                </div>
+                <span>{{ timelineConflictEvents.length }} 个待核对片段</span>
+              </div>
+
+              <div class="timeline-conflict-summary">
+                <div v-if="timelineGoalEntries.length !== officialGoalTotal">
+                  <small>进球事件总数</small>
+                  <strong>{{ timelineGoalEntries.length }} 个</strong>
+                  <span>官方 {{ officialGoalTotal }} 个</span>
+                </div>
+                <div v-for="row in timelineTeamDiscrepancies" :key="`team-${row.teamId}`">
+                  <small>{{ row.teamName }}</small>
+                  <strong>时间线 {{ row.timelineGoals }} 球</strong>
+                  <span>官方 {{ row.officialGoals }} 球</span>
+                </div>
+                <div
+                  v-for="row in timelinePlayerDiscrepancies"
+                  :key="`player-${row.teamId}-${row.playerLabel}`"
+                >
+                  <small>{{ teams.find((team) => team.id === row.teamId)?.name }}</small>
+                  <strong>{{ row.playerLabel }}</strong>
+                  <span>时间线 {{ row.timelineGoals }} 球 · 官方 {{ row.officialGoals }} 球</span>
+                </div>
+              </div>
+
+              <p v-if="timelineCorrectionError" class="form-message error-message">
+                {{ timelineCorrectionError }}
+              </p>
+              <p v-if="timelineCorrectionMessage" class="form-message">
+                {{ timelineCorrectionMessage }}
+              </p>
+
+              <div v-if="timelineConflictEvents.length" class="timeline-conflict-events">
+                <article
+                  v-for="entry in timelineConflictEvents"
+                  :key="`conflict-${entry.event.id}`"
+                  class="timeline-conflict-event"
+                >
+                  <div class="timeline-conflict-event-info">
+                    <button
+                      class="timeline-play-button"
+                      type="button"
+                      :disabled="!canPreviewTimelineEvent(entry.event)"
+                      :aria-label="`播放 ${formatDuration(entry.event.timestamp_seconds)} 的进球片段`"
+                      @click="openTimelinePreview(entry.event)"
+                    >
+                      ▶
+                    </button>
+                    <div>
+                      <strong>{{ formatDuration(entry.event.timestamp_seconds) }}</strong>
+                      <span>当前记录：{{ entry.playerLabel }}</span>
+                    </div>
+                  </div>
+                  <label>
+                    核对后的进球队员
+                    <select
+                      :value="selectedTimelineCorrectionPlayerId(entry)"
+                      :disabled="
+                        !authStore.hasPermission('upload_and_annotate_video') ||
+                        isTimelineEventReviewed(entry.event.id)
+                      "
+                      @change="
+                        setTimelineCorrectionPlayer(
+                          entry.event.id,
+                          ($event.target as HTMLSelectElement).value,
+                        )
+                      "
+                    >
+                      <option value="">请选择球员</option>
+                      <optgroup
+                        v-for="team in reportParticipantTeams"
+                        :key="team.id"
+                        :label="team.name"
+                      >
+                        <option
+                          v-for="player in timelineCorrectionPlayers.filter(
+                            (candidate) => candidate.team_id === team.id,
+                          )"
+                          :key="player.id"
+                          :value="player.id"
+                        >
+                          #{{ player.number }} {{ player.name }}
+                        </option>
+                      </optgroup>
+                    </select>
+                  </label>
+                  <div
+                    v-if="authStore.hasPermission('upload_and_annotate_video')"
+                    class="timeline-conflict-actions"
+                  >
+                    <button
+                      class="button button-primary"
+                      type="button"
+                      :disabled="
+                        savingTimelineCorrectionId !== null ||
+                        selectedTimelineCorrectionPlayerId(entry) === '' ||
+                        isTimelineEventReviewed(entry.event.id)
+                      "
+                      @click="saveTimelineCorrection(entry)"
+                    >
+                      {{
+                        savingTimelineCorrectionId === entry.event.id
+                          ? '正在保存…'
+                          : isTimelineEventReviewed(entry.event.id)
+                            ? '✓ 已核对'
+                            : '保存核对结果'
+                      }}
+                    </button>
+                    <button
+                      v-if="isTimelineEventReviewed(entry.event.id)"
+                      class="button button-secondary"
+                      type="button"
+                      :disabled="savingTimelineCorrectionId !== null"
+                      @click="reopenTimelineCorrection(entry.event.id)"
+                    >
+                      重新审核
+                    </button>
+                  </div>
+                </article>
+              </div>
+              <p v-else class="timeline-conflict-help">
+                当前差异无法通过重新关联现有事件解决，请先在下方人工事件标注区补充或删除进球事件。
+              </p>
+              <p
+                v-if="!authStore.hasPermission('upload_and_annotate_video')"
+                class="timeline-conflict-help"
+              >
+                当前账号可以查看冲突，但没有修改事件的权限，请由教练或分析师完成核对。
+              </p>
+            </div>
+
+            <template v-else>
+              <div class="timeline-team-labels" aria-hidden="true">
+                <strong>{{ home?.name }}</strong><span>比赛进程</span><strong>{{ away?.name }}</strong>
+              </div>
+              <div class="match-event-timeline-scroll">
+                <ol class="match-event-timeline">
+                  <li
+                    v-for="entry in timelineGoalEntries"
+                    :key="entry.event.id"
+                    class="timeline-event"
+                    :class="`timeline-event--${entry.side}`"
+                  >
+                    <article class="timeline-event-card">
+                      <div class="timeline-event-meta">
+                        <span>{{ entry.side === 'home' ? home?.name : away?.name }}</span>
+                        <time>{{ formatDuration(entry.event.timestamp_seconds) }}</time>
+                      </div>
+                      <strong>{{ entry.playerLabel }}</strong>
+                      <div class="timeline-event-footer">
+                        <span>进球后比分 {{ entry.score }}</span>
+                        <button
+                          class="timeline-play-button"
+                          type="button"
+                          :disabled="!canPreviewTimelineEvent(entry.event)"
+                          :title="
+                            canPreviewTimelineEvent(entry.event)
+                              ? '播放这个进球的前后片段'
+                              : '关联录像当前不可播放'
+                          "
+                          :aria-label="`播放第 ${entry.sequence} 个进球视频`"
+                          @click="openTimelinePreview(entry.event)"
+                        >
+                          ▶
+                        </button>
+                      </div>
+                    </article>
+                    <div class="timeline-marker" :aria-label="`第 ${entry.sequence} 个进球`">
+                      {{ entry.sequence }}
+                    </div>
+                  </li>
+                </ol>
+              </div>
+            </template>
+          </template>
+        </section>
+
+        <div
+          v-if="timelinePreviewEvent && timelinePreviewVideo"
+          class="timeline-preview-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="进球视频预览"
+          @click.self="closeTimelinePreview"
+        >
+          <div class="timeline-preview-dialog">
+            <div class="timeline-preview-heading">
+              <div>
+                <strong>进球过程</strong>
+                <span>
+                  {{ formatDuration(timelinePreviewStart) }}–{{ formatDuration(timelinePreviewEnd) }}
+                  · {{ timelinePreviewVideo.original_filename }}
+                </span>
+              </div>
+              <button class="button button-secondary" type="button" @click="closeTimelinePreview">
+                关闭
+              </button>
+            </div>
+            <video
+              ref="timelinePreviewPlayer"
+              class="timeline-preview-video"
+              controls
+              preload="metadata"
+              :src="getVideoContentUrl(timelinePreviewVideo.id)"
+              @loadedmetadata="startTimelinePreview"
+              @timeupdate="limitTimelinePreview"
+            >
+              当前浏览器不支持视频播放。
+            </video>
+          </div>
+        </div>
       </section>
 
       <section v-if="match" class="detail-card video-section">
@@ -2067,6 +2859,91 @@ onUnmounted(() => {
   color: var(--success);
   font-weight: 650;
 }
+.report-section { margin-top: 20px; }
+.report-upload-form { display: flex; align-items: end; gap: 14px; margin-top: 20px; padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
+.report-upload-form .field { flex: 1; }
+.report-upload-form input[type='file'] { height: auto; padding: 10px; background: white; }
+.report-preview,
+.official-report-result { display: grid; gap: 18px; margin-top: 20px; padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
+.report-preview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.report-preview-heading > div { display: grid; gap: 6px; }
+.report-preview-heading span { color: var(--muted); font-size: 13px; }
+.report-score-grid,
+.report-mapping-grid,
+.report-rosters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.report-score-grid article { display: grid; grid-template-columns: 1fr auto; gap: 5px 14px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: white; }
+.report-score-grid article span,
+.report-score-grid article small { color: var(--muted); font-size: 12px; }
+.report-score-grid article strong { font-size: 17px; }
+.report-score-grid article b { grid-row: span 2; color: var(--primary-dark); font-size: 34px; }
+.report-conflicts { padding: 15px 17px; border: 1px solid #f2c66d; border-radius: 12px; color: #6b4b0b; background: #fff8e8; }
+.report-conflicts ul { margin: 8px 0 12px; padding-left: 20px; }
+.report-conflicts label { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; font-weight: 650; }
+.report-conflicts input { width: auto; margin-top: 3px; }
+.report-rosters > div { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: white; }
+.report-rosters ul { display: grid; gap: 6px; max-height: 320px; margin: 10px 0 0; padding: 0; overflow: auto; list-style: none; }
+.report-rosters li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.report-rosters li:last-child { border-bottom: 0; }
+.report-rosters li span { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.report-rosters li small { color: #8a4b08; }
+.report-confirm-button { justify-self: end; }
+.match-event-timeline-section { margin-top: 28px; padding-top: 26px; border-top: 1px solid var(--border); }
+.timeline-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.timeline-heading h3 { margin: 0; font-size: 22px; }
+.timeline-heading .page-description { margin-bottom: 0; }
+.timeline-empty { margin-top: 18px; padding: 18px; border-radius: 12px; color: var(--muted-strong); background: var(--surface-soft); text-align: center; }
+.timeline-conflict-review { display: grid; gap: 18px; margin-top: 22px; padding: 20px; border: 1px solid #f2c66d; border-radius: 16px; background: #fffaf0; }
+.timeline-conflict-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.timeline-conflict-heading > div { display: grid; gap: 6px; }
+.timeline-conflict-heading strong { color: #6b4200; font-size: 17px; }
+.timeline-conflict-heading p { margin: 0; color: #795817; font-size: 13px; line-height: 1.55; }
+.timeline-conflict-heading > span { flex: 0 0 auto; padding: 6px 10px; border-radius: 999px; color: #7b4b00; background: #ffe7ad; font-size: 12px; font-weight: 750; }
+.timeline-conflict-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.timeline-conflict-summary > div { display: grid; gap: 4px; padding: 13px 14px; border: 1px solid #f0d8a4; border-radius: 12px; background: white; }
+.timeline-conflict-summary small,
+.timeline-conflict-summary span { color: var(--muted); font-size: 12px; }
+.timeline-conflict-summary strong { color: #25314c; font-size: 14px; }
+.timeline-conflict-events { display: grid; gap: 10px; max-height: 580px; overflow-y: auto; }
+.timeline-conflict-event { display: grid; grid-template-columns: minmax(190px, 0.8fr) minmax(260px, 1.2fr) auto; align-items: end; gap: 14px; padding: 14px; border: 1px solid #eadbb9; border-radius: 12px; background: white; }
+.timeline-conflict-event-info { display: flex; align-items: center; gap: 12px; }
+.timeline-conflict-event-info > div { display: grid; gap: 4px; }
+.timeline-conflict-event-info span { color: var(--muted); font-size: 12px; }
+.timeline-conflict-event label { display: grid; gap: 5px; color: var(--muted-strong); font-size: 12px; font-weight: 700; }
+.timeline-conflict-event select { width: 100%; }
+.timeline-conflict-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.timeline-conflict-actions .button:disabled { border-color: #d5dae5; color: #727b8d; background: #e6e9ef; opacity: 1; cursor: default; }
+.timeline-conflict-help { margin: 0; padding: 12px 14px; border-radius: 10px; color: #6b4b0b; background: #fff1cf; font-size: 13px; }
+.timeline-team-labels { display: grid; grid-template-columns: minmax(0, 1fr) 74px minmax(0, 1fr); gap: 18px; margin-top: 24px; color: var(--primary-dark); }
+.timeline-team-labels strong:first-child { text-align: right; }
+.timeline-team-labels strong:last-child { text-align: left; }
+.timeline-team-labels span { color: var(--muted); font-size: 12px; font-weight: 700; text-align: center; }
+.match-event-timeline-scroll { max-height: 900px; margin-top: 14px; overflow-y: auto; }
+.match-event-timeline { position: relative; display: grid; gap: 16px; min-height: 100%; margin: 0; padding: 8px 6px; list-style: none; }
+.match-event-timeline::before { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; border-radius: 999px; background: linear-gradient(#9eb4f5, #315bd8, #9eb4f5); content: ''; transform: translateX(-50%); }
+.timeline-event { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 74px minmax(0, 1fr); align-items: center; gap: 18px; min-height: 108px; }
+.timeline-event-card { display: grid; gap: 9px; padding: 14px 16px; border: 1px solid #d6def3; border-radius: 14px; background: white; box-shadow: 0 8px 24px rgb(35 60 120 / 8%); }
+.timeline-event--home .timeline-event-card { grid-column: 1; text-align: right; }
+.timeline-event--away .timeline-event-card { grid-column: 3; text-align: left; }
+.timeline-event-meta,
+.timeline-event-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.timeline-event--home .timeline-event-meta,
+.timeline-event--home .timeline-event-footer { flex-direction: row-reverse; }
+.timeline-event-meta span,
+.timeline-event-meta time,
+.timeline-event-footer span { color: var(--muted); font-size: 12px; }
+.timeline-event-card > strong { color: #192542; font-size: 15px; }
+.timeline-event--home .timeline-event-card { border-right: 4px solid #315bd8; }
+.timeline-event--away .timeline-event-card { border-left: 4px solid #e15b64; }
+.timeline-marker { z-index: 1; display: grid; width: 38px; height: 38px; grid-column: 2; grid-row: 1; place-self: center; place-items: center; border: 4px solid white; border-radius: 50%; color: white; background: var(--primary); box-shadow: 0 0 0 2px #7692e8; font-size: 11px; font-weight: 800; }
+.timeline-play-button { display: inline-grid; width: 34px; height: 34px; flex: 0 0 34px; padding: 0 0 0 2px; place-items: center; border: 0; border-radius: 50%; color: white; background: var(--primary); cursor: pointer; }
+.timeline-play-button:hover { background: var(--primary-dark); transform: scale(1.04); }
+.timeline-play-button:disabled { color: #8c96aa; background: #e5e9f1; cursor: not-allowed; transform: none; }
+.timeline-preview-overlay { position: fixed; z-index: 120; inset: 0; display: grid; padding: 24px; place-items: center; background: rgb(8 15 34 / 76%); backdrop-filter: blur(4px); }
+.timeline-preview-dialog { display: grid; width: min(980px, 96vw); max-height: 92vh; gap: 16px; padding: 20px; overflow: auto; border-radius: 18px; background: white; box-shadow: 0 30px 90px rgb(0 0 0 / 42%); }
+.timeline-preview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.timeline-preview-heading > div { display: grid; gap: 5px; }
+.timeline-preview-heading span { color: var(--muted); font-size: 13px; }
+.timeline-preview-video { display: block; width: 100%; max-height: 72vh; border-radius: 12px; background: #030712; }
 .video-section { margin-top: 20px; }
 .video-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .ai-boundary-note { display: grid; gap: 6px; margin-top: 18px; padding: 14px 16px; border: 1px solid #f2c66d; border-radius: 12px; color: #6b4b0b; background: #fff8e8; }
@@ -2192,11 +3069,32 @@ onUnmounted(() => {
     align-items: flex-start;
   }
   .video-heading,
+  .report-upload-form,
+  .report-preview-heading,
   .video-list li,
   .video-title-row,
   .video-metadata-row,
   .processing-failure { align-items: flex-start; flex-direction: column; }
   .annotation-workspace { grid-template-columns: 1fr; }
+  .report-score-grid,
+  .report-mapping-grid,
+  .report-rosters { grid-template-columns: 1fr; }
+  .timeline-heading { align-items: flex-start; flex-direction: column; }
+  .timeline-conflict-heading { flex-direction: column; }
+  .timeline-conflict-event { grid-template-columns: 1fr; align-items: stretch; }
+  .timeline-conflict-actions { align-items: stretch; flex-direction: column; }
+  .timeline-conflict-event .button { width: 100%; }
+  .timeline-team-labels { display: none; }
+  .match-event-timeline { padding-left: 0; }
+  .match-event-timeline::before { left: 20px; }
+  .timeline-event { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 10px; min-height: 0; }
+  .timeline-event--home .timeline-event-card,
+  .timeline-event--away .timeline-event-card { grid-column: 2; grid-row: 1; text-align: left; }
+  .timeline-event--home .timeline-event-meta,
+  .timeline-event--home .timeline-event-footer { flex-direction: row; }
+  .timeline-marker { width: 34px; height: 34px; grid-column: 1; place-self: start center; }
+  .timeline-preview-overlay { padding: 10px; }
+  .timeline-preview-dialog { width: 100%; padding: 14px; }
   .annotation-player-toolbar { align-items: flex-start; flex-direction: column; }
   .event-statistics { grid-template-columns: 1fr; }
   .event-list li { grid-template-columns: 68px 1fr; }
