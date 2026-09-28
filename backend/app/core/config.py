@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     match_report_max_bytes: int = 10 * 1024**2
     match_report_dir: Path = PROJECT_ROOT / "backend" / "uploads" / "match_reports"
     goal_model_dir: Path = PROJECT_ROOT / "backend" / "model_artifacts" / "goal_detector" / "v2"
+    match_report_llm_base_url: str = ""
+    match_report_llm_api_key: str = ""
+    match_report_llm_model: str = ""
+    match_report_prompt_version: str = "match-report-v1"
+    match_report_llm_timeout_seconds: float = 180.0
+    match_report_llm_enable_thinking: bool = False
+    match_report_llm_max_tokens: int = 3000
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",

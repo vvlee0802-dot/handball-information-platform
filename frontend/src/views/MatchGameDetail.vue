@@ -23,6 +23,17 @@ import {
   type ClipExportStatus,
 } from '@/services/clipExports'
 import { useAuthStore } from '@/stores/auth'
+import {
+  evaluateAiMatchReport,
+  generateAiMatchReport,
+  listAiMatchReports,
+  updateAiMatchReport,
+  type AiMatchReportRecord,
+  type AiReportContent,
+  type AiReportDetailLevel,
+  type AiReportEvidence,
+  type AiReportFocus,
+} from '@/services/aiMatchReports'
 import NotFoundPanel from '@/components/NotFoundPanel.vue'
 import { listCompetitions, type CompetitionRecord } from '@/services/competitions'
 import {
@@ -99,6 +110,18 @@ const reportLoading = ref(false)
 const reportConfirming = ref(false)
 const reportError = ref('')
 const reportMessage = ref('')
+const aiMatchReport = ref<AiMatchReportRecord | null>(null)
+const aiReportVersions = ref<AiMatchReportRecord[]>([])
+const aiReportFocus = ref<AiReportFocus>('full_match')
+const aiReportDetailLevel = ref<AiReportDetailLevel>('concise')
+const aiReportLoading = ref(false)
+const aiReportEditing = ref(false)
+const aiReportSaving = ref(false)
+const aiReportEvaluating = ref(false)
+const aiReportDraft = ref<AiReportContent | null>(null)
+const aiReportError = ref('')
+const aiReportMessage = ref('')
+const selectedAiEvidence = ref<AiReportEvidence | null>(null)
 const videos = ref<VideoRecord[]>([])
 const uploadPolicy = ref<VideoUploadPolicy | null>(null)
 const selectedVideo = ref<File | null>(null)
@@ -212,6 +235,7 @@ const canManageOfficialReports = computed(
     authStore.hasPermission('manage_competition_data') ||
     authStore.hasPermission('generate_reports'),
 )
+const canGenerateAiReport = computed(() => authStore.hasPermission('generate_reports'))
 const playbackVideo = computed(() =>
   videos.value.find((video) => video.id === selectedPlaybackVideoId.value),
 )
@@ -1261,6 +1285,123 @@ const loadOfficialReport = async () => {
   }
 }
 
+const loadAiMatchReport = async () => {
+  if (!match.value || !authStore.hasPermission('view_authorized_video')) return
+  try {
+    aiReportVersions.value = await listAiMatchReports(match.value.id)
+    if (
+      !aiMatchReport.value ||
+      !aiReportVersions.value.some((report) => report.id === aiMatchReport.value?.id)
+    ) {
+      aiMatchReport.value = aiReportVersions.value[0] ?? null
+    } else {
+      aiMatchReport.value =
+        aiReportVersions.value.find((report) => report.id === aiMatchReport.value?.id) ?? null
+    }
+  } catch (e) {
+    aiReportError.value = e instanceof Error ? e.message : 'AI 赛后报告加载失败'
+  }
+}
+
+const createAiMatchReport = async () => {
+  if (!match.value) return
+  aiReportLoading.value = true
+  aiReportError.value = ''
+  aiReportMessage.value = ''
+  selectedAiEvidence.value = null
+  try {
+    aiMatchReport.value = await generateAiMatchReport(match.value.id, {
+      focus: aiReportFocus.value,
+      detail_level: aiReportDetailLevel.value,
+    })
+    await loadAiMatchReport()
+    aiReportMessage.value = '已生成新的 AI 版本，原有版本和人工修改保持不变。'
+  } catch (e) {
+    aiReportError.value = e instanceof Error ? e.message : 'AI 赛后报告生成失败'
+  } finally {
+    aiReportLoading.value = false
+  }
+}
+
+const selectAiReportVersion = (reportId: string) => {
+  aiMatchReport.value = aiReportVersions.value.find((report) => report.id === reportId) ?? null
+  aiReportEditing.value = false
+  aiReportDraft.value = null
+  selectedAiEvidence.value = null
+  aiReportError.value = ''
+  aiReportMessage.value = ''
+}
+
+const startAiReportEditing = () => {
+  if (!aiMatchReport.value) return
+  aiReportDraft.value = JSON.parse(JSON.stringify(aiMatchReport.value.report)) as AiReportContent
+  aiReportEditing.value = true
+  aiReportError.value = ''
+  aiReportMessage.value = ''
+}
+
+const cancelAiReportEditing = () => {
+  aiReportEditing.value = false
+  aiReportDraft.value = null
+}
+
+const saveAiReportEditing = async () => {
+  if (!match.value || !aiMatchReport.value || !aiReportDraft.value) return
+  aiReportSaving.value = true
+  aiReportError.value = ''
+  try {
+    aiMatchReport.value = await updateAiMatchReport(
+      match.value.id,
+      aiMatchReport.value.id,
+      aiReportDraft.value,
+    )
+    aiReportEditing.value = false
+    aiReportDraft.value = null
+    await loadAiMatchReport()
+    aiReportMessage.value = '人工修改已作为该报告的用户版本保存。'
+  } catch (e) {
+    aiReportError.value = e instanceof Error ? e.message : '人工版本保存失败'
+  } finally {
+    aiReportSaving.value = false
+  }
+}
+
+const runAiReportEvaluation = async () => {
+  if (!match.value || !aiMatchReport.value) return
+  aiReportEvaluating.value = true
+  aiReportError.value = ''
+  aiReportMessage.value = ''
+  try {
+    const evaluation = await evaluateAiMatchReport(match.value.id, aiMatchReport.value.id)
+    aiMatchReport.value = { ...aiMatchReport.value, latest_evaluation: evaluation }
+    aiReportVersions.value = aiReportVersions.value.map((report) =>
+      report.id === aiMatchReport.value?.id
+        ? { ...report, latest_evaluation: evaluation }
+        : report,
+    )
+    aiReportMessage.value = evaluation.passed
+      ? `事实评估通过，准确率 ${evaluation.score}%。`
+      : `事实评估未通过，请查看 ${evaluation.checks.filter((check) => !check.passed).length} 项问题。`
+  } catch (e) {
+    aiReportError.value = e instanceof Error ? e.message : '事实评估失败'
+  } finally {
+    aiReportEvaluating.value = false
+  }
+}
+
+const findAiEvidence = (evidenceId: string) =>
+  aiMatchReport.value?.evidence.find((item) => item.id === evidenceId)
+
+const inspectAiEvidence = (evidenceId: string) => {
+  const evidence = findAiEvidence(evidenceId)
+  if (!evidence) return
+  selectedAiEvidence.value = evidence
+  if (evidence.event_id !== null) {
+    const event = events.value.find((item) => item.id === evidence.event_id)
+    if (event) openTimelinePreview(event)
+  }
+}
+
 const chooseOfficialReport = (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0] ?? null
   selectedReport.value = file
@@ -1386,6 +1527,7 @@ watch(
     void loadClipExports()
     void loadUploadPolicy()
     void loadOfficialReport()
+    void loadAiMatchReport()
   },
   { immediate: true },
 )
@@ -1950,6 +2092,193 @@ onUnmounted(() => {
             </video>
           </div>
         </div>
+      </section>
+
+      <section v-if="match" class="detail-card ai-report-section">
+        <div class="video-heading">
+          <div>
+            <p class="eyebrow">AI Match Report</p>
+            <h2 class="section-title">AI 赛后报告</h2>
+            <p class="page-description">
+              只使用已确认比分、官方统计和已核实事件生成；报告中的事实可以查看对应证据。
+            </p>
+          </div>
+        </div>
+
+        <div v-if="canGenerateAiReport" class="ai-report-generator">
+          <label>
+            报告重点
+            <select v-model="aiReportFocus" :disabled="aiReportLoading">
+              <option value="full_match">全场总结</option>
+              <option value="key_phases">关键阶段</option>
+              <option value="team_comparison">球队对比</option>
+              <option value="player_performance">球员表现</option>
+            </select>
+          </label>
+          <label>
+            表达方式
+            <select v-model="aiReportDetailLevel" :disabled="aiReportLoading">
+              <option value="concise">简洁</option>
+              <option value="detailed">详细</option>
+            </select>
+          </label>
+          <button
+            class="button button-primary"
+            type="button"
+            :disabled="aiReportLoading"
+            @click="createAiMatchReport"
+          >
+            {{ aiReportLoading ? '正在生成…' : aiMatchReport ? '生成新版本' : '生成赛后报告' }}
+          </button>
+        </div>
+
+        <p v-if="aiReportError" class="error">{{ aiReportError }}</p>
+        <p v-if="aiReportMessage" class="success">{{ aiReportMessage }}</p>
+        <div v-if="!aiMatchReport && !aiReportLoading" class="timeline-empty">
+          尚未生成报告。建议先导入官方统计表并核对视频事件。
+        </div>
+
+        <div v-if="aiReportVersions.length" class="ai-report-version-bar">
+          <label>
+            报告版本
+            <select
+              :value="aiMatchReport?.id"
+              @change="selectAiReportVersion(($event.target as HTMLSelectElement).value)"
+            >
+              <option v-for="reportVersion in aiReportVersions" :key="reportVersion.id" :value="reportVersion.id">
+                {{ new Date(reportVersion.created_at).toLocaleString() }} ·
+                {{ reportVersion.generation_focus === 'full_match' ? '全场总结' : reportVersion.generation_focus === 'key_phases' ? '关键阶段' : reportVersion.generation_focus === 'team_comparison' ? '球队对比' : '球员表现' }} ·
+                {{ reportVersion.detail_level === 'concise' ? '简洁' : '详细' }}
+                {{ reportVersion.is_user_edited ? '· 已人工修改' : '' }}
+              </option>
+            </select>
+          </label>
+          <span>{{ aiReportVersions.length }} 个版本</span>
+        </div>
+
+        <article v-if="aiMatchReport" class="ai-report-document">
+          <header>
+            <div class="ai-report-title-block">
+              <template v-if="aiReportEditing && aiReportDraft">
+                <label>报告标题<input v-model="aiReportDraft.title" maxlength="200" /></label>
+                <label>报告摘要<textarea v-model="aiReportDraft.summary" rows="3" maxlength="2000" /></label>
+              </template>
+              <template v-else>
+                <h3>{{ aiMatchReport.report.title }}</h3>
+                <p>{{ aiMatchReport.report.summary }}</p>
+              </template>
+            </div>
+            <div class="ai-report-header-actions">
+              <span class="meta-chip">
+                {{ aiMatchReport.model_name }} · {{ aiMatchReport.prompt_version }}
+              </span>
+              <span v-if="aiMatchReport.is_user_edited" class="status-badge status-ready">人工版本</span>
+              <button
+                v-if="canGenerateAiReport && !aiReportEditing"
+                class="button button-secondary"
+                type="button"
+                @click="startAiReportEditing"
+              >
+                编辑报告
+              </button>
+            </div>
+          </header>
+
+          <section
+            v-for="(section, sectionIndex) in (aiReportEditing && aiReportDraft ? aiReportDraft.sections : aiMatchReport.report.sections)"
+            :key="`${sectionIndex}-${section.heading}`"
+            class="ai-report-block"
+          >
+            <template v-if="aiReportEditing && aiReportDraft">
+              <label>段落标题<input v-model="section.heading" maxlength="100" /></label>
+              <label>段落内容<textarea v-model="section.body" rows="5" maxlength="4000" /></label>
+            </template>
+            <template v-else>
+              <h4>{{ section.heading }}</h4>
+              <p>{{ section.body }}</p>
+            </template>
+            <div v-if="section.evidence_ids.length" class="ai-report-evidence-links">
+              <span>事实依据</span>
+              <button
+                v-for="evidenceId in section.evidence_ids"
+                :key="evidenceId"
+                type="button"
+                @click="inspectAiEvidence(evidenceId)"
+              >
+                {{ findAiEvidence(evidenceId)?.label ?? evidenceId }}
+              </button>
+            </div>
+          </section>
+
+          <div v-if="aiReportEditing" class="ai-report-edit-actions">
+            <button class="button button-primary" type="button" :disabled="aiReportSaving" @click="saveAiReportEditing">
+              {{ aiReportSaving ? '正在保存…' : '保存人工版本' }}
+            </button>
+            <button class="button button-secondary" type="button" :disabled="aiReportSaving" @click="cancelAiReportEditing">
+              取消
+            </button>
+          </div>
+
+          <aside v-if="aiMatchReport.report.limitations.length" class="ai-report-limitations">
+            <strong>当前数据局限</strong>
+            <ul>
+              <li v-for="item in aiMatchReport.report.limitations" :key="item">{{ item }}</li>
+            </ul>
+          </aside>
+
+          <div v-if="selectedAiEvidence" class="ai-report-evidence-detail">
+            <div>
+              <strong>{{ selectedAiEvidence.label }}</strong>
+              <span>{{ selectedAiEvidence.value }}</span>
+            </div>
+            <button
+              v-if="selectedAiEvidence.event_id !== null"
+              class="button button-secondary"
+              type="button"
+              @click="inspectAiEvidence(selectedAiEvidence.id)"
+            >
+              播放对应视频证据
+            </button>
+          </div>
+
+          <section class="ai-report-evaluation">
+            <div class="ai-report-evaluation-heading">
+              <div>
+                <h4>事实一致性评估</h4>
+                <p>核对关键数字、事件引用和时间点是否与当前数据库一致。</p>
+              </div>
+              <button
+                v-if="canGenerateAiReport"
+                class="button button-secondary"
+                type="button"
+                :disabled="aiReportEvaluating || aiReportEditing"
+                @click="runAiReportEvaluation"
+              >
+                {{ aiReportEvaluating ? '正在评估…' : aiMatchReport.latest_evaluation ? '重新评估' : '运行事实评估' }}
+              </button>
+            </div>
+
+            <template v-if="aiMatchReport.latest_evaluation">
+              <div class="ai-report-score-row">
+                <strong :class="aiMatchReport.latest_evaluation.passed ? 'evaluation-pass' : 'evaluation-fail'">
+                  {{ aiMatchReport.latest_evaluation.score }}%
+                </strong>
+                <span>{{ aiMatchReport.latest_evaluation.passed ? '评估通过' : '评估失败' }}</span>
+                <span v-if="aiMatchReport.latest_evaluation.previous_score !== null">
+                  上一版 {{ aiMatchReport.latest_evaluation.previous_score }}%，
+                  变化 {{ (aiMatchReport.latest_evaluation.score_delta ?? 0) >= 0 ? '+' : '' }}{{ aiMatchReport.latest_evaluation.score_delta }}
+                </span>
+              </div>
+              <ul class="ai-report-check-list">
+                <li v-for="check in aiMatchReport.latest_evaluation.checks" :key="check.key" :class="check.passed ? 'is-pass' : 'is-fail'">
+                  <strong>{{ check.passed ? '✓' : '✕' }} {{ check.label }}</strong>
+                  <span>{{ check.detail }}</span>
+                </li>
+              </ul>
+            </template>
+            <p v-else class="timeline-empty">尚未运行评估。</p>
+          </section>
+        </article>
       </section>
 
       <section v-if="match" class="detail-card video-section">
@@ -3064,6 +3393,53 @@ onUnmounted(() => {
 .clip-export-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .clip-export-actions .button { padding: 7px 11px; text-decoration: none; }
 .clip-preview { margin-top: 18px; padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
+.ai-report-section { margin-top: 20px; }
+.ai-report-generator { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.8fr) auto; align-items: end; gap: 12px; margin-top: 20px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
+.ai-report-generator label,
+.ai-report-version-bar label,
+.ai-report-title-block label,
+.ai-report-block label { display: grid; gap: 6px; color: var(--muted-strong); font-size: 13px; font-weight: 700; }
+.ai-report-generator select,
+.ai-report-version-bar select,
+.ai-report-title-block input,
+.ai-report-title-block textarea,
+.ai-report-block input,
+.ai-report-block textarea { width: 100%; }
+.ai-report-version-bar { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-top: 16px; }
+.ai-report-version-bar label { width: min(720px, 100%); }
+.ai-report-version-bar span { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.ai-report-document { display: grid; gap: 18px; margin-top: 20px; padding: 24px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-soft); }
+.ai-report-document > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+.ai-report-document h3,
+.ai-report-document h4 { margin: 0; color: var(--text); }
+.ai-report-title-block { display: grid; flex: 1; gap: 12px; }
+.ai-report-header-actions { display: flex; align-items: flex-end; flex-direction: column; gap: 8px; }
+.ai-report-document header p,
+.ai-report-block p { margin: 8px 0 0; color: var(--muted-strong); line-height: 1.75; white-space: pre-line; }
+.ai-report-block { display: grid; gap: 10px; }
+.ai-report-edit-actions { display: flex; gap: 10px; }
+.ai-report-evidence-links { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ai-report-evidence-links > span { color: var(--muted); font-size: 12px; font-weight: 750; }
+.ai-report-evidence-links button { padding: 5px 9px; border: 1px solid var(--primary); border-radius: 999px; color: var(--primary-dark); background: var(--surface); font-size: 12px; cursor: pointer; }
+.ai-report-limitations { padding: 14px 16px; border: 1px solid #efd499; border-radius: 12px; color: #714b08; background: #fff9eb; }
+.ai-report-limitations ul { margin: 8px 0 0; padding-left: 20px; }
+.ai-report-evidence-detail { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid var(--primary); border-radius: 12px; background: var(--surface); }
+.ai-report-evidence-detail > div { display: grid; gap: 5px; }
+.ai-report-evidence-detail span { color: var(--muted-strong); font-size: 13px; }
+.ai-report-evaluation { display: grid; gap: 14px; padding-top: 20px; border-top: 1px solid var(--border); }
+.ai-report-evaluation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.ai-report-evaluation-heading p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.ai-report-score-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px 16px; }
+.ai-report-score-row strong { font-size: 30px; }
+.ai-report-score-row span { color: var(--muted-strong); }
+.evaluation-pass { color: #087c58; }
+.evaluation-fail { color: var(--danger); }
+.ai-report-check-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.ai-report-check-list li { display: grid; gap: 4px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.ai-report-check-list li span { color: var(--muted-strong); font-size: 13px; }
+.ai-report-check-list .is-pass strong { color: #087c58; }
+.ai-report-check-list .is-fail { border-color: #efb4b4; background: #fff7f7; }
+.ai-report-check-list .is-fail strong { color: var(--danger); }
 @media (max-width: 620px) {
   .detail-actions {
     align-items: flex-start;
@@ -3103,5 +3479,11 @@ onUnmounted(() => {
   .clip-export-create,
   .clip-export-list li { align-items: flex-start; flex-direction: column; }
   .clip-export-actions { justify-content: flex-start; }
+  .ai-report-document > header,
+  .ai-report-evidence-detail { align-items: flex-start; flex-direction: column; }
+  .ai-report-generator { grid-template-columns: 1fr; }
+  .ai-report-version-bar,
+  .ai-report-evaluation-heading { align-items: stretch; flex-direction: column; }
+  .ai-report-header-actions { align-items: flex-start; }
 }
 </style>
