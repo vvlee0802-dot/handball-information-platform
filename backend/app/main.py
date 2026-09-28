@@ -5,6 +5,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.routes.auth import router as auth_router
 from app.api.routes.analysis_tasks import router as analysis_tasks_router
 from app.api.routes.ai_match_reports import router as ai_match_reports_router
+from app.api.routes.knowledge import router as knowledge_router
+from app.api.routes.knowledge_qa import router as knowledge_qa_router
+from app.api.routes.knowledge_evaluations import router as knowledge_evaluations_router
 from app.api.routes.clip_exports import router as clip_exports_router
 from app.api.routes.admin_users import router as admin_users_router
 from app.api.routes.competitions import router as competitions_router
@@ -26,6 +29,9 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(analysis_tasks_router)
 app.include_router(ai_match_reports_router)
+app.include_router(knowledge_router)
+app.include_router(knowledge_qa_router)
+app.include_router(knowledge_evaluations_router)
 app.include_router(clip_exports_router)
 app.include_router(admin_users_router)
 app.include_router(competitions_router)

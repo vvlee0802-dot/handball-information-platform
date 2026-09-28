@@ -15,6 +15,8 @@ class Permission(StrEnum):
     UPLOAD_AND_ANNOTATE_VIDEO = "upload_and_annotate_video"
     MANAGE_COMPETITION_DATA = "manage_competition_data"
     GENERATE_REPORTS = "generate_reports"
+    QUERY_KNOWLEDGE_BASE = "query_knowledge_base"
+    MANAGE_KNOWLEDGE_BASE = "manage_knowledge_base"
     MANAGE_USERS = "manage_users"
 
 
@@ -24,10 +26,14 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.VIEW_AUTHORIZED_VIDEO,
         Permission.UPLOAD_AND_ANNOTATE_VIDEO,
         Permission.GENERATE_REPORTS,
+        Permission.QUERY_KNOWLEDGE_BASE,
+        Permission.MANAGE_KNOWLEDGE_BASE,
     },
     UserRole.COMPETITION_ADMIN: {
         Permission.VIEW_AUTHORIZED_VIDEO,
         Permission.MANAGE_COMPETITION_DATA,
+        Permission.QUERY_KNOWLEDGE_BASE,
+        Permission.MANAGE_KNOWLEDGE_BASE,
     },
     UserRole.SYSTEM_ADMIN: set(Permission),
 }

@@ -87,3 +87,11 @@ ManageMatchReportUser = Annotated[
         )
     ),
 ]
+ManageKnowledgeBaseUser = Annotated[
+    User,
+    Depends(require_permission(Permission.MANAGE_KNOWLEDGE_BASE)),
+]
+QueryKnowledgeBaseUser = Annotated[
+    User,
+    Depends(require_permission(Permission.QUERY_KNOWLEDGE_BASE)),
+]

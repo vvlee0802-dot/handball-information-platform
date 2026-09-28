@@ -10,6 +10,7 @@ import {
 } from '@/services/adminUsers'
 import type { Permission, UserRole } from '@/services/auth'
 import { useAuthStore } from '@/stores/auth'
+import { listTeams, type TeamRecord } from '@/services/teams'
 
 const authStore = useAuthStore()
 const users = ref<AdminUser[]>([])
@@ -17,6 +18,7 @@ const isLoading = ref(true)
 const isSubmitting = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
+const teams = ref<TeamRecord[]>([])
 
 const roleOptions: Array<{ value: UserRole; label: string }> = [
   { value: 'athlete', label: '运动员' },
@@ -30,6 +32,8 @@ const permissionOptions: Array<{ value: Permission; label: string }> = [
   { value: 'upload_and_annotate_video', label: '上传与标注视频' },
   { value: 'manage_competition_data', label: '维护赛事数据' },
   { value: 'generate_reports', label: '生成报告与提问' },
+  { value: 'query_knowledge_base', label: '查询知识库' },
+  { value: 'manage_knowledge_base', label: '管理知识文档' },
   { value: 'manage_users', label: '管理用户与系统' },
 ]
 
@@ -38,6 +42,7 @@ const form = reactive<AdminUserCreate>({
   display_name: '',
   password: '',
   role: 'athlete',
+  team_id: null,
   extra_permissions: [],
 })
 
@@ -64,6 +69,7 @@ const resetForm = () => {
   form.display_name = ''
   form.password = ''
   form.role = 'athlete'
+  form.team_id = null
   form.extra_permissions = []
 }
 
@@ -107,6 +113,19 @@ const handleActiveChange = async (user: AdminUser, event: Event) => {
   }
 }
 
+const handleTeamChange = async (user: AdminUser, event: Event) => {
+  const raw = (event.target as HTMLSelectElement).value
+  const team_id = raw ? Number(raw) : null
+  errorMessage.value = ''
+  try {
+    const updated = await updateAdminUser(user.id, { team_id })
+    users.value = users.value.map((item) => (item.id === user.id ? updated : item))
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '所属球队更新失败'
+    await loadUsers()
+  }
+}
+
 const handleExtraPermissionChange = async (
   user: AdminUser,
   permission: Permission,
@@ -130,7 +149,10 @@ watch(
   [() => authStore.initialized, canManageUsers],
   ([initialized, allowed]) => {
     if (!initialized) return
-    if (allowed) void loadUsers()
+    if (allowed) {
+      void loadUsers()
+      void listTeams().then((records) => { teams.value = records })
+    }
     else isLoading.value = false
   },
   { immediate: true },
@@ -178,6 +200,13 @@ watch(
                   </option>
                 </select>
               </div>
+              <div class="field">
+                <label for="new-team">所属球队（可选）</label>
+                <select id="new-team" v-model="form.team_id">
+                  <option :value="null">未关联球队</option>
+                  <option v-for="team in teams" :key="team.id" :value="team.id">{{ team.name }}</option>
+                </select>
+              </div>
             </div>
 
             <fieldset class="permission-fieldset">
@@ -222,6 +251,14 @@ watch(
                 <option v-for="option in roleOptions" :key="option.value" :value="option.value">
                   {{ option.label }}
                 </option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label :for="`team-${user.id}`">所属球队</label>
+              <select :id="`team-${user.id}`" :value="user.team_id ?? ''" @change="handleTeamChange(user, $event)">
+                <option value="">未关联球队</option>
+                <option v-for="team in teams" :key="team.id" :value="team.id">{{ team.name }}</option>
               </select>
             </div>
 

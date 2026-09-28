@@ -2,6 +2,12 @@ from app.models.auth_session import AuthSession
 from app.models.analysis_task import AnalysisTask
 from app.models.analysis_prediction import AnalysisPrediction
 from app.models.ai_match_report import AiMatchReport, AiReportEvaluation
+from app.models.knowledge import (
+    DocumentChunk,
+    KnowledgeDocument,
+    RagEvaluationCase,
+    RagEvaluationRun,
+)
 from app.models.clip_export import ClipExport, ClipExportEvent
 from app.models.competition import Competition
 from app.models.event import Event
@@ -22,6 +28,10 @@ __all__ = [
     "AnalysisPrediction",
     "AiMatchReport",
     "AiReportEvaluation",
+    "KnowledgeDocument",
+    "DocumentChunk",
+    "RagEvaluationCase",
+    "RagEvaluationRun",
     "ClipExport",
     "ClipExportEvent",
     "Competition",

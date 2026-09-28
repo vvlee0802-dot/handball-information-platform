@@ -14,6 +14,7 @@ describe('admin user service', () => {
       email: 'coach@example.com',
       display_name: '王教练',
       role: 'coach_analyst',
+      team_id: null,
       is_active: true,
       permissions: ['view_authorized_video'],
       extra_permissions: [],
@@ -46,6 +47,7 @@ describe('admin user service', () => {
       display_name: user.display_name,
       password: 'initial-password',
       role: 'coach_analyst',
+      team_id: null,
       extra_permissions: [],
     })
     await updateAdminUser(user.id, { is_active: false })

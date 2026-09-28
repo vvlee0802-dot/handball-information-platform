@@ -3,6 +3,7 @@ import type { Permission, UserRole } from './auth'
 
 export interface AdminUser {
   id: number
+  team_id: number | null
   email: string
   display_name: string
   role: UserRole
@@ -16,12 +17,14 @@ export interface AdminUserCreate {
   display_name: string
   password: string
   role: UserRole
+  team_id: number | null
   extra_permissions: Permission[]
 }
 
 export interface AdminUserUpdate {
   display_name?: string
   role?: UserRole
+  team_id?: number | null
   is_active?: boolean
   extra_permissions?: Permission[]
 }

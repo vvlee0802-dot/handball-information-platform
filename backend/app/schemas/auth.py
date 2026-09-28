@@ -11,6 +11,7 @@ class LoginRequest(BaseModel):
 
 class UserRead(BaseModel):
     id: int
+    team_id: int | None
     email: str
     display_name: str
     role: UserRole
@@ -21,6 +22,7 @@ class UserRead(BaseModel):
 def to_user_read(user: User) -> UserRead:
     return UserRead(
         id=user.id,
+        team_id=user.team_id,
         email=user.email,
         display_name=user.display_name,
         role=UserRole(user.role),

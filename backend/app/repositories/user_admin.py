@@ -35,6 +35,7 @@ def create_user(db: Session, data: AdminUserCreate) -> User:
         display_name=data.display_name.strip(),
         password_hash=hash_password(data.password),
         role=data.role.value,
+        team_id=data.team_id,
     )
     user.permission_grants = [
         UserPermission(permission=permission.value)

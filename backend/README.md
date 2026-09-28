@@ -75,6 +75,16 @@ US5.2 本地进球检测原型已实现：
 
 AI 依赖是可选的：普通 API 开发只安装 `requirements.txt`，本地训练和推理再安装 `requirements-ml.txt`。数据集保存在 `backend/datasets`，模型产物保存在 `backend/model_artifacts`，两者均不提交到 Git。
 
+Epic 8 RAG 知识库已实现：
+
+- PDF、TXT 和 Markdown 文档上传、来源分块、失败重试与级联删除
+- 百炼 Embedding 向量化、余弦相似度 Top-K 检索和 Qwen 依据内回答
+- 文档、页码或章节、引用片段和相关度分数的可追溯返回
+- 平台、球队和上传者三级可见范围，以及直接接口访问的权限隔离
+- 固定问题集和版本化评测记录，包含 Recall@K、引用命中率、无依据回答率和逐题明细
+
+Embedding 当前以 PostgreSQL JSON 字段保存，并由应用层计算余弦相似度，适合本地 MVP 数据量；扩大知识库后可无缝迁移到 pgvector 索引检索。
+
 应用迁移并创建首个本地用户：
 
 ```bash

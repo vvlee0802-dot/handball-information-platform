@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     match_report_llm_timeout_seconds: float = 180.0
     match_report_llm_enable_thinking: bool = False
     match_report_llm_max_tokens: int = 3000
+    knowledge_document_max_bytes: int = 20 * 1024**2
+    knowledge_document_dir: Path = PROJECT_ROOT / "backend" / "uploads" / "knowledge"
+    knowledge_embedding_model: str = "text-embedding-v4"
+    knowledge_rag_prompt_version: str = "knowledge-rag-v1"
+    knowledge_retrieval_top_k: int = 5
+    knowledge_relevance_threshold: float = 0.3
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
@@ -59,6 +65,12 @@ class Settings(BaseSettings):
         if self.match_report_dir.is_absolute():
             return self.match_report_dir
         return PROJECT_ROOT / self.match_report_dir
+
+    @property
+    def knowledge_document_storage_path(self) -> Path:
+        if self.knowledge_document_dir.is_absolute():
+            return self.knowledge_document_dir
+        return PROJECT_ROOT / self.knowledge_document_dir
 
 
 settings = Settings()

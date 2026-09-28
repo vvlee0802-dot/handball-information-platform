@@ -1,6 +1,6 @@
 # Handball Information Platform
 
-手球信息与比赛分析平台。目前已完成 Epic 1、Epic 2、Epic 3、Epic 4，以及 Epic 5 的 AI 分析任务和候选事件复核管线。
+手球信息与比赛分析平台。目前已完成 Epic 1 至 Epic 8；比赛分析 Agent（Epic 9）和工程化上线（Epic 10）仍待开发。
 
 用户可以通过赛事、比赛、球队、球员或场馆查找信息。主要页面的数据由 FastAPI 从 PostgreSQL 读取；具备权限的教练或分析师可以上传 MP4 录像、标注并确认比赛事件，再生成可预览和下载的视频片段。AI 已能生成可审核的进球候选，跨比赛泛化与更多事件类型仍属于后续开发范围。
 
@@ -218,6 +218,19 @@ python -m app.scripts.compare_goal_models \
 6. 教练或分析师可以播放可疑进球、重新选择进球队员并保存；保存后按钮锁定为“已核对”，也可点击“重新审核”再次修改。
 7. 每次核对后系统自动重新校验，全部数据与官方报告一致后才展示正式时间线。
 
+## Epic 7 AI 赛后报告
+
+1. 基于已确认比分、官方统计和已核对事件生成结构化赛后报告，不把 AI 推测冒充成比赛事实。
+2. 报告包含比赛概况、关键进程、球员表现和可核查证据，可由用户重新生成、审核和反馈。
+3. 接入百炼兼容的 Qwen 接口，同时保存模型、提示词版本、生成状态、失败原因和评价记录。
+
+## Epic 8 RAG 手球知识库
+
+1. 支持上传 PDF、TXT 和 Markdown，保存原文件并解析为带文档、页码或章节来源的文本分块；失败任务可重试或删除。
+2. 使用百炼 Embedding 完成向量化和相似度检索，再由 Qwen 仅根据检索内容回答；依据不足时明确拒答，正常回答必须展示引用。
+3. 支持平台可见、球队私有和上传者私有三种范围；球队成员、非球队成员和管理员在后端接口层执行隔离。
+4. 新增固定问题集和版本化自动评测，保存 Recall@K、引用命中率、无依据回答率，以及每道题的检索分块、分数和最终引用。
+
 ## 需求文档
 
 当前正式需求文档为 [Handball AI Project Requirements v1.0](docs/Handball_AI_Project_Requirements_v1.0.docx)。该文件用于替代此前的旧版需求文件。
@@ -235,11 +248,13 @@ python -m app.scripts.compare_goal_models \
 - AI 视频分析任务的启动、去重、持久化进度和刷新恢复
 - AI 候选事件的置信度、模型版本、视频定位与人工复核闭环
 - 基于官方赛后统计表的球员单场进球统计，不依赖人工视频事件
+- 基于可核查比赛事实的 AI 赛后报告与人工评价
+- 带来源引用、权限隔离和版本化评测的 RAG 手球知识库
 
 ## 技术栈
 
 - 前端：Vue 3、TypeScript、Vue Router、Pinia、Vite、Vitest、ESLint、Prettier
-- 后端：FastAPI、SQLAlchemy、Pydantic、Pytest、FFmpeg
+- 后端：FastAPI、SQLAlchemy、Pydantic、Pytest、FFmpeg、百炼兼容 Qwen/Embedding API
 - 数据库：PostgreSQL、Alembic
 - 本地环境：Docker Compose
 
@@ -261,6 +276,9 @@ python -m app.scripts.compare_goal_models \
 - `ClipExportEvent`：导出任务与已确认事件的有序关联，用于生成单事件片段或多事件合并视频
 - `EventPlayerAssignmentAudit`：球员关联纠正审计，保留事件、旧值、新值、操作人和操作时间
 - `AnalysisTask`：视频 AI 分析任务，记录任务编号、运行状态、处理阶段、进度和失败原因
+- `AiMatchReport` / `AiReportEvaluation`：AI 赛后报告、生成版本及人工反馈
+- `KnowledgeDocument` / `DocumentChunk`：知识文档、来源分块和 Embedding 向量记录
+- `RagEvaluationCase` / `RagEvaluationRun`：固定评测问题、配置快照、指标和逐题追踪明细
 
 所有实体均使用稳定 ID 建立关系，避免使用显示名称作为数据关联依据。
 
@@ -329,8 +347,8 @@ python -m pytest -q
 ```text
 ESLint                         Passed
 TypeScript type-check          Passed
-Frontend unit tests            48 passed
-Backend tests                  76 passed
+Frontend unit tests            52 passed
+Backend tests                  90 passed
 Production build               Passed
 ```
 
@@ -401,10 +419,20 @@ Production build               Passed
 - [x] US6.3 按球员和事件类型生成、预览与下载个人集锦
 - [x] US6.4 单条或批量纠正事件球员并保存审计记录
 
-### Epic 7 to Epic 9 LLM RAG and Agent
+### Epic 7 AI Match Report
 
-- [ ] AI 赛后报告
-- [ ] RAG 手球知识库
+- [x] 基于确认事实生成带证据的 AI 赛后报告
+- [x] 报告版本、状态、失败重试和人工评价
+
+### Epic 8 RAG Handball Knowledge Base
+
+- [x] US8.1 文档上传、解析、分块、重试和删除
+- [x] US8.2 Embedding 检索、依据内回答、引用与依据不足拒答
+- [x] US8.3 平台、球队和上传者三级知识权限隔离
+- [x] US8.4 固定问题集、Recall@K、引用命中率和无依据回答评测
+
+### Epic 9 Match Analysis Agent
+
 - [ ] 比赛分析 Agent
 
 ### Epic 10 Engineering Delivery

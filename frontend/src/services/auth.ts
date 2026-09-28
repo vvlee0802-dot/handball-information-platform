@@ -7,10 +7,13 @@ export type Permission =
   | 'upload_and_annotate_video'
   | 'manage_competition_data'
   | 'generate_reports'
+  | 'query_knowledge_base'
+  | 'manage_knowledge_base'
   | 'manage_users'
 
 export interface AuthUser {
   id: number
+  team_id: number | null
   email: string
   display_name: string
   role: UserRole

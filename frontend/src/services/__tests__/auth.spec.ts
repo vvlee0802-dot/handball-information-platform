@@ -6,6 +6,7 @@ import { apiRequest } from '@/services/http'
 
 const user = {
   id: 1,
+  team_id: null,
   email: 'coach@example.com',
   display_name: '王教练',
   role: 'coach_analyst',

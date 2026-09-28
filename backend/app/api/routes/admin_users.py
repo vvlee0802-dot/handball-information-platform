@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.repositories import auth as auth_repository
 from app.repositories import user_admin as user_repository
 from app.schemas.user_admin import AdminUserCreate, AdminUserRead, AdminUserUpdate
+from app.models.team import Team
 
 
 router = APIRouter(prefix="/api/admin/users", tags=["user administration"])
@@ -19,6 +20,7 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 def to_admin_user_read(user) -> AdminUserRead:
     return AdminUserRead(
         id=user.id,
+        team_id=user.team_id,
         email=user.email,
         display_name=user.display_name,
         role=UserRole(user.role),
@@ -47,6 +49,8 @@ def create_user(
             status_code=status.HTTP_409_CONFLICT,
             detail="A user with this email already exists",
         )
+    if data.team_id is not None and db.get(Team, data.team_id) is None:
+        raise HTTPException(status_code=422, detail="Team not found")
     return to_admin_user_read(user_repository.create_user(db, data))
 
 
@@ -60,6 +64,8 @@ def update_user(
     user = user_repository.get_user(db, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    if data.team_id is not None and db.get(Team, data.team_id) is None:
+        raise HTTPException(status_code=422, detail="Team not found")
 
     if user.id == current_user.id:
         if data.role is not None and data.role.value != user.role:

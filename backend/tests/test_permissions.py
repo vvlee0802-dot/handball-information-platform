@@ -126,6 +126,8 @@ def test_system_admin_can_create_and_configure_user(
     assert set(created_user["permissions"]) == {
         "generate_reports",
         "manage_competition_data",
+        "manage_knowledge_base",
+        "query_knowledge_base",
         "upload_and_annotate_video",
         "view_authorized_video",
     }

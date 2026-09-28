@@ -20,11 +20,17 @@ def test_valid_credentials_create_session_and_return_user(
     assert login_response.status_code == 200
     assert login_response.json() == {
         "id": registered_user.id,
+        "team_id": None,
         "email": "coach@example.com",
         "display_name": "测试教练",
         "role": "competition_admin",
         "is_active": True,
-        "permissions": ["manage_competition_data", "view_authorized_video"],
+        "permissions": [
+            "manage_competition_data",
+            "manage_knowledge_base",
+            "query_knowledge_base",
+            "view_authorized_video",
+        ],
     }
     assert "HttpOnly" in login_response.headers["set-cookie"]
 
