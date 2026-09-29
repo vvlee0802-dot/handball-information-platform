@@ -128,6 +128,7 @@ def test_system_admin_can_create_and_configure_user(
         "manage_competition_data",
         "manage_knowledge_base",
         "query_knowledge_base",
+        "use_match_agent",
         "upload_and_annotate_video",
         "view_authorized_video",
     }

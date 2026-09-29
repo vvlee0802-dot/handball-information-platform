@@ -29,6 +29,7 @@ def test_valid_credentials_create_session_and_return_user(
             "manage_competition_data",
             "manage_knowledge_base",
             "query_knowledge_base",
+            "use_match_agent",
             "view_authorized_video",
         ],
     }

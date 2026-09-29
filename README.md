@@ -1,6 +1,6 @@
 # Handball Information Platform
 
-手球信息与比赛分析平台。目前已完成 Epic 1 至 Epic 8；比赛分析 Agent（Epic 9）和工程化上线（Epic 10）仍待开发。
+手球信息与比赛分析平台。目前已完成 Epic 1 至 Epic 9；工程化上线（Epic 10）仍待开发。
 
 用户可以通过赛事、比赛、球队、球员或场馆查找信息。主要页面的数据由 FastAPI 从 PostgreSQL 读取；具备权限的教练或分析师可以上传 MP4 录像、标注并确认比赛事件，再生成可预览和下载的视频片段。AI 已能生成可审核的进球候选，跨比赛泛化与更多事件类型仍属于后续开发范围。
 
@@ -231,6 +231,13 @@ python -m app.scripts.compare_goal_models \
 3. 支持平台可见、球队私有和上传者私有三种范围；球队成员、非球队成员和管理员在后端接口层执行隔离。
 4. 新增固定问题集和版本化自动评测，保存 Recall@K、引用命中率、无依据回答率，以及每道题的检索分块、分数和最终引用。
 
+## Epic 9 比赛分析 Agent
+
+1. 支持在同一会话中使用自然语言查询比赛概况、已确认事件、球员官方统计和手球知识库；回答必须来自工具返回的数据，并附带比赛、球员、知识分块或视频时间来源。
+2. 保存每次 Agent 运行的模型、耗时、状态和工具调用轨迹；页面可以查看工具名称、脱敏参数、耗时、结果摘要与错误，失败运行支持重试。
+3. 会话保存上下文，后续问题可以理解“这场比赛”“他”等指代；删除会话会同步删除聊天消息和短期上下文。
+4. 工具使用服务端白名单并再次执行权限校验；修改比赛状态等写操作只生成待确认方案，用户确认时重新检查权限并写入独立审计记录。
+
 ## 需求文档
 
 当前正式需求文档为 [Handball AI Project Requirements v1.0](docs/Handball_AI_Project_Requirements_v1.0.docx)。该文件用于替代此前的旧版需求文件。
@@ -250,6 +257,7 @@ python -m app.scripts.compare_goal_models \
 - 基于官方赛后统计表的球员单场进球统计，不依赖人工视频事件
 - 基于可核查比赛事实的 AI 赛后报告与人工评价
 - 带来源引用、权限隔离和版本化评测的 RAG 手球知识库
+- 带多工具调用、来源追踪、会话上下文和写操作确认的比赛分析 Agent
 
 ## 技术栈
 
@@ -279,6 +287,9 @@ python -m app.scripts.compare_goal_models \
 - `AiMatchReport` / `AiReportEvaluation`：AI 赛后报告、生成版本及人工反馈
 - `KnowledgeDocument` / `DocumentChunk`：知识文档、来源分块和 Embedding 向量记录
 - `RagEvaluationCase` / `RagEvaluationRun`：固定评测问题、配置快照、指标和逐题追踪明细
+- `ChatSession` / `ChatMessage`：比赛分析 Agent 的会话、比赛上下文与聊天消息
+- `AgentRun` / `AgentToolCall`：每轮模型运行和经过脱敏的工具调用轨迹
+- `AgentActionProposal` / `AgentActionAudit`：高风险写操作的待确认方案与不可随会话删除的审计记录
 
 所有实体均使用稳定 ID 建立关系，避免使用显示名称作为数据关联依据。
 
@@ -347,8 +358,8 @@ python -m pytest -q
 ```text
 ESLint                         Passed
 TypeScript type-check          Passed
-Frontend unit tests            52 passed
-Backend tests                  90 passed
+Frontend unit tests            53 passed
+Backend tests                  94 passed
 Production build               Passed
 ```
 
@@ -433,7 +444,10 @@ Production build               Passed
 
 ### Epic 9 Match Analysis Agent
 
-- [ ] 比赛分析 Agent
+- [x] US9.1 比赛、事件、球员统计和知识库的多工具问答
+- [x] US9.2 工具调用轨迹、参数脱敏、错误展示和失败重试
+- [x] US9.3 多轮上下文、指代解析和会话删除
+- [x] US9.4 工具白名单、写操作二次确认、权限复核和审计
 
 ### Epic 10 Engineering Delivery
 

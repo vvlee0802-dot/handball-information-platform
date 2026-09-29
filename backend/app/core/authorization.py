@@ -17,6 +17,7 @@ class Permission(StrEnum):
     GENERATE_REPORTS = "generate_reports"
     QUERY_KNOWLEDGE_BASE = "query_knowledge_base"
     MANAGE_KNOWLEDGE_BASE = "manage_knowledge_base"
+    USE_MATCH_AGENT = "use_match_agent"
     MANAGE_USERS = "manage_users"
 
 
@@ -28,12 +29,14 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.GENERATE_REPORTS,
         Permission.QUERY_KNOWLEDGE_BASE,
         Permission.MANAGE_KNOWLEDGE_BASE,
+        Permission.USE_MATCH_AGENT,
     },
     UserRole.COMPETITION_ADMIN: {
         Permission.VIEW_AUTHORIZED_VIDEO,
         Permission.MANAGE_COMPETITION_DATA,
         Permission.QUERY_KNOWLEDGE_BASE,
         Permission.MANAGE_KNOWLEDGE_BASE,
+        Permission.USE_MATCH_AGENT,
     },
     UserRole.SYSTEM_ADMIN: set(Permission),
 }

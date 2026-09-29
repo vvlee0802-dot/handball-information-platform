@@ -35,6 +35,9 @@ const handleLogout = async () => {
         >
           知识库
         </RouterLink>
+        <RouterLink v-if="authStore.hasPermission('use_match_agent')" to="/agent">
+          分析 Agent
+        </RouterLink>
         <RouterLink v-if="authStore.hasPermission('manage_users')" to="/admin/users">
           用户管理
         </RouterLink>

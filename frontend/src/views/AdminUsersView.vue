@@ -34,6 +34,7 @@ const permissionOptions: Array<{ value: Permission; label: string }> = [
   { value: 'generate_reports', label: '生成报告与提问' },
   { value: 'query_knowledge_base', label: '查询知识库' },
   { value: 'manage_knowledge_base', label: '管理知识文档' },
+  { value: 'use_match_agent', label: '使用比赛分析 Agent' },
   { value: 'manage_users', label: '管理用户与系统' },
 ]
 

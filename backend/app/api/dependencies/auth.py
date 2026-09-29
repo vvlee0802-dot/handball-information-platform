@@ -95,3 +95,7 @@ QueryKnowledgeBaseUser = Annotated[
     User,
     Depends(require_permission(Permission.QUERY_KNOWLEDGE_BASE)),
 ]
+UseMatchAgentUser = Annotated[
+    User,
+    Depends(require_permission(Permission.USE_MATCH_AGENT)),
+]

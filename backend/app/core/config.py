@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     knowledge_rag_prompt_version: str = "knowledge-rag-v1"
     knowledge_retrieval_top_k: int = 5
     knowledge_relevance_threshold: float = 0.3
+    match_agent_prompt_version: str = "match-agent-v1"
+    match_agent_max_tool_steps: int = 5
+    match_agent_history_messages: int = 16
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",

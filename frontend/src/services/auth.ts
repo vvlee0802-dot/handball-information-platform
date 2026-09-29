@@ -9,6 +9,7 @@ export type Permission =
   | 'generate_reports'
   | 'query_knowledge_base'
   | 'manage_knowledge_base'
+  | 'use_match_agent'
   | 'manage_users'
 
 export interface AuthUser {

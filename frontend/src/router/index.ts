@@ -10,6 +10,7 @@ export default createRouter({
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
     { path: '/admin/users', name: 'admin-users', component: () => import('@/views/AdminUsersView.vue') },
     { path: '/knowledge', name: 'knowledge', component: () => import('@/views/KnowledgeBaseView.vue') },
+    { path: '/agent', name: 'agent', component: () => import('@/views/AgentView.vue') },
     { path: '/competitions', name: 'competitions', component: () => import('@/views/CompetitionsView.vue') },
     { path: '/competitions/:competitionId', name: 'competition-detail', component: () => import('@/views/CompetitionDetail.vue') },
     { path: '/matches', name: 'matches', component: MatchesView },
