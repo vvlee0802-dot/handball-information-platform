@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.models.clip_export import ClipExport
 from app.models.event import Event
 from app.services import clip_export as clip_export_service
-from tests.conftest import TestingSessionLocal
+from tests.conftest import TestingSessionLocal, test_engine
 from tests.test_events import create_match_and_player, create_video
 from tests.test_videos import replace_login
 
@@ -88,7 +88,10 @@ def test_player_highlight_uses_only_selected_player_and_event_types(
             "player_id": player_id,
         },
     )
-    monkeypatch.setattr("app.api.routes.clip_exports.process_clip_export", lambda *_args: None)
+    monkeypatch.setattr(
+        "app.api.routes.clip_exports.dispatch_job",
+        lambda *_args, **_kwargs: None,
+    )
 
     response = client.post(
         f"/api/matches/{match_id}/player-highlights",
@@ -100,6 +103,14 @@ def test_player_highlight_uses_only_selected_player_and_event_types(
     assert response.json()["export_type"] == "player_highlight"
     assert response.json()["player_id"] == player_id
     assert response.json()["event_types"] == ["goal"]
+    assert response.json()["segments"] == [
+        {
+            "event_id": goal_id,
+            "source_timestamp_seconds": 40.0,
+            "highlight_start_seconds": 0.0,
+            "duration_seconds": 13.0,
+        }
+    ]
     assert response.json()["filename"] == f"match-{match_id}-player-{player_id}-highlight.mp4"
 
 
@@ -132,6 +143,12 @@ def test_clip_export_clamps_boundaries_persists_status_and_downloads_mp4(
 
     monkeypatch.setattr(clip_export_service, "render_segment", fake_render)
     monkeypatch.setattr(clip_export_service, "concatenate_segments", fake_concatenate)
+    monkeypatch.setattr(
+        "app.api.routes.clip_exports.dispatch_job",
+        lambda _background_tasks, _job_type, clip_export_id, **_kwargs: (
+            clip_export_service.process_clip_export(clip_export_id, test_engine)
+        ),
+    )
 
     created = client.post(
         f"/api/matches/{match_id}/clip-exports",
@@ -142,6 +159,20 @@ def test_clip_export_clamps_boundaries_persists_status_and_downloads_mp4(
     assert created.status_code == 202
     assert created.json()["status"] == "queued"
     assert created.json()["event_ids"] == [first_event_id, last_event_id]
+    assert created.json()["segments"] == [
+        {
+            "event_id": first_event_id,
+            "source_timestamp_seconds": 3.0,
+            "highlight_start_seconds": 0.0,
+            "duration_seconds": 8.0,
+        },
+        {
+            "event_id": last_event_id,
+            "source_timestamp_seconds": 3598.0,
+            "highlight_start_seconds": 8.0,
+            "duration_seconds": 10.0,
+        },
+    ]
     assert rendered_bounds == [(0.0, 8.0), (3590.0, 3600)]
     assert listing.status_code == 200
     task = listing.json()[0]
@@ -191,11 +222,18 @@ def test_running_clip_export_cannot_be_deleted(client: TestClient) -> None:
         assert db.get(ClipExport, task_id) is not None
 
 
-def test_athlete_can_view_but_cannot_create_clip_export(client: TestClient) -> None:
+def test_athlete_can_view_but_cannot_create_clip_export(
+    client: TestClient,
+    monkeypatch,
+) -> None:
     match_id, _, _, _ = create_match_and_player(client)
     coach = replace_login(client, email="clip-owner@example.com", role=UserRole.COACH_ANALYST)
     video_id = create_video(match_id, coach.id)
     event_id = create_event(client, match_id, video_id, 40)
+    monkeypatch.setattr(
+        "app.api.routes.clip_exports.dispatch_job",
+        lambda *_args, **_kwargs: None,
+    )
     owned_export = client.post(
         f"/api/matches/{match_id}/clip-exports",
         json={"event_ids": [event_id]},

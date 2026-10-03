@@ -14,12 +14,18 @@ from app.models.video import Video
 from app.repositories import clip_export as clip_exports
 from app.repositories import match as matches
 from app.repositories import player as players
-from app.schemas.clip_export import ClipExportCreate, ClipExportRead, PlayerHighlightCreate
+from app.schemas.clip_export import (
+    ClipExportCreate,
+    ClipExportRead,
+    ClipExportSegmentRead,
+    PlayerHighlightCreate,
+)
 from app.services.clip_export import (
     ClipExportError,
+    calculate_clip_bounds,
     delete_clip_export_output,
-    process_clip_export,
 )
+from app.tasks.queue import dispatch_job
 
 
 router = APIRouter(tags=["clip-exports"])
@@ -27,16 +33,46 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
 def serialize_clip_export(db: Session, clip_export) -> ClipExportRead:
+    event_ids = clip_exports.list_event_ids(db, clip_export.id)
+    events_by_id = {
+        event.id: event
+        for event in db.scalars(select(Event).where(Event.id.in_(event_ids)))
+    }
+    video_ids = {event.video_id for event in events_by_id.values()}
+    videos_by_id = {
+        video.id: video
+        for video in db.scalars(select(Video).where(Video.id.in_(video_ids)))
+    }
+    segments: list[ClipExportSegmentRead] = []
+    highlight_offset = 0.0
+    for event_id in event_ids:
+        event = events_by_id.get(event_id)
+        video = videos_by_id.get(event.video_id) if event is not None else None
+        if event is None or video is None:
+            continue
+        start, end = calculate_clip_bounds(event.timestamp_seconds, video.duration_seconds)
+        duration = end - start
+        segments.append(
+            ClipExportSegmentRead(
+                event_id=event.id,
+                source_timestamp_seconds=event.timestamp_seconds,
+                highlight_start_seconds=highlight_offset,
+                duration_seconds=duration,
+            )
+        )
+        highlight_offset += duration
+
     return ClipExportRead(
         id=clip_export.id,
         match_id=clip_export.match_id,
         created_by_user_id=clip_export.created_by_user_id,
-        event_ids=clip_exports.list_event_ids(db, clip_export.id),
+        event_ids=event_ids,
         status=clip_export.status,
         filename=clip_export.filename,
         export_type=clip_export.export_type,
         player_id=clip_export.player_id,
         event_types=clip_export.event_types.split(",") if clip_export.event_types else [],
+        segments=segments,
         size_bytes=clip_export.size_bytes,
         duration_seconds=clip_export.duration_seconds,
         failure_reason=clip_export.failure_reason,
@@ -114,7 +150,12 @@ def create_clip_export(
         filename=filename,
     )
     response = serialize_clip_export(db, clip_export)
-    background_tasks.add_task(process_clip_export, clip_export.id, db.get_bind())
+    dispatch_job(
+        background_tasks,
+        "clip_export",
+        clip_export.id,
+        database_bind=db.get_bind(),
+    )
     return response
 
 
@@ -175,7 +216,12 @@ def create_player_highlight(
         event_types=event_types,
     )
     response = serialize_clip_export(db, clip_export)
-    background_tasks.add_task(process_clip_export, clip_export.id, db.get_bind())
+    dispatch_job(
+        background_tasks,
+        "clip_export",
+        clip_export.id,
+        database_bind=db.get_bind(),
+    )
     return response
 
 

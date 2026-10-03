@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-handball}
       POSTGRES_USER: ${POSTGRES_USER:-handball}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-handball_dev_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     volumes:
@@ -17,7 +17,103 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-handball} -d ${POSTGRES_DB:-handball}"]
       interval: 5s
       timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: handball-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - handball_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: handball-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      TASK_QUEUE_MODE: rq
+      VIDEO_UPLOAD_DIR: /data/videos
+      MATCH_REPORT_DIR: /data/match_reports
+      KNOWLEDGE_DOCUMENT_DIR: /data/knowledge
+      GOAL_MODEL_DIR: /models/goal_detector/v2
+    volumes:
+      - handball_media_data:/data
+      - ./backend/model_artifacts:/models:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: handball-worker
+    restart: unless-stopped
+    command: ["python", "-m", "rq", "worker", "handball", "--url", "redis://redis:6379/0"]
+    env_file: .env
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      TASK_QUEUE_MODE: rq
+      VIDEO_UPLOAD_DIR: /data/videos
+      MATCH_REPORT_DIR: /data/match_reports
+      KNOWLEDGE_DOCUMENT_DIR: /data/knowledge
+      GOAL_MODEL_DIR: /models/goal_detector/v2
+    volumes:
+      - handball_media_data:/data
+      - ./backend/model_artifacts:/models:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.tasks.worker_health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: handball-frontend
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
       retries: 5
 
 volumes:
   handball_postgres_data:
+  handball_redis_data:
+  handball_media_data:

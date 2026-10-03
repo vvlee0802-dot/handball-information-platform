@@ -80,9 +80,7 @@ const handleSubmit = async () => {
 
 <style scoped>
 .login-page {
-  background:
-    radial-gradient(circle at 18% 12%, #e8efff 0, transparent 32%),
-    var(--surface-soft);
+  background-color: #050a13;
 }
 
 .login-container {
@@ -96,9 +94,8 @@ const handleSubmit = async () => {
   width: min(100%, 440px);
   padding: 36px;
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: 10px;
   background: white;
-  box-shadow: 0 24px 70px rgba(31, 45, 80, 0.12);
 }
 
 .login-card h1 { margin: 0; font-size: 34px; letter-spacing: -0.03em; }

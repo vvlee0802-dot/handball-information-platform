@@ -1,19 +1,24 @@
 :root {
-  --ink: #172033;
-  --muted-strong: #586174;
-  --muted: #7c8598;
-  --border: #dde3ee;
+  --ink: #0e1729;
+  --muted-strong: #61708a;
+  --muted: #8793a8;
+  --border: #d6e0ed;
+  --border-strong: #b9c9dd;
   --surface: #ffffff;
-  --surface-soft: #f5f7fb;
-  --primary: #3157d5;
-  --primary-dark: #203fa5;
-  --primary-soft: #edf2ff;
-  --success: #168461;
-  --success-soft: #e8f7f1;
-  --warning: #a66308;
-  --warning-soft: #fff3db;
-  --danger: #b43a4c;
-  --danger-soft: #ffedf0;
+  --surface-soft: #f1f6fc;
+  --surface-muted: #eaf0f8;
+  --navy: #071a2f;
+  --navy-soft: #0b2949;
+  --primary: #125bf0;
+  --primary-dark: #0d46c8;
+  --primary-soft: #edf3ff;
+  --success: #159e6d;
+  --success-soft: #e8f8f1;
+  --warning: #b37512;
+  --warning-soft: #fff7e7;
+  --danger: #ff2e3d;
+  --danger-soft: #fff0f2;
+  --shadow-card: 0 12px 32px rgba(7, 26, 47, 0.07);
 }
 
 *,
@@ -23,7 +28,7 @@
 html {
   min-width: 320px;
   min-height: 100%;
-  background: var(--surface-soft);
+  background: #050a13;
 }
 
 body {
@@ -31,8 +36,8 @@ body {
   min-height: 100vh;
   margin: 0;
   color: var(--ink);
-  background: var(--surface-soft);
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  background: #050a13;
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", Inter, system-ui, -apple-system, sans-serif;
   font-size: 15px;
   line-height: 1.55;
   text-rendering: optimizeLegibility;
@@ -41,7 +46,8 @@ body {
 
 button,
 input,
-select { font: inherit; }
+select,
+textarea { font: inherit; }
 
 button,
 a { -webkit-tap-highlight-color: transparent; }

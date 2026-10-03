@@ -10,6 +10,8 @@ const players = ref<PlayerRecord[]>([])
 const teams = ref<TeamRecord[]>([])
 const keyword = ref('')
 const teamFilter = ref('')
+const positionFilter = ref('')
+const numberFilter = ref('')
 const isLoading = ref(true)
 const errorMessage = ref('')
 const isSubmitting = ref(false)
@@ -24,6 +26,15 @@ const form = reactive<PlayerInput>({
 })
 
 const teamMap = computed(() => new Map(teams.value.map((team) => [team.id, team])))
+const positions = computed(() =>
+  [
+    ...new Set(
+      players.value
+        .map((player) => player.position)
+        .filter((position): position is string => Boolean(position)),
+    ),
+  ].sort((a, b) => a.localeCompare(b, 'zh-CN')),
+)
 const visiblePlayers = computed(() => {
   const query = keyword.value.trim().toLocaleLowerCase('zh-CN')
   return players.value.filter((player) => {
@@ -33,7 +44,9 @@ const visiblePlayers = computed(() => {
     )
     return (
       (!query || searchable.includes(query)) &&
-      (!teamFilter.value || player.team_id === Number(teamFilter.value))
+      (!teamFilter.value || player.team_id === Number(teamFilter.value)) &&
+      (!positionFilter.value || player.position === positionFilter.value) &&
+      (!numberFilter.value || player.number === Number(numberFilter.value))
     )
   })
 })
@@ -77,6 +90,8 @@ const handleCreate = async () => {
 const clearFilters = () => {
   keyword.value = ''
   teamFilter.value = ''
+  positionFilter.value = ''
+  numberFilter.value = ''
 }
 onMounted(loadData)
 </script>
@@ -150,14 +165,21 @@ onMounted(loadData)
       </section>
 
       <section class="panel filter-panel">
+        <div class="search-heading">
+          <div>
+            <h2 class="section-title">搜索球员</h2>
+            <p>按姓名、球队、位置或号码查找球员。</p>
+          </div>
+          <span class="meta-chip">{{ visiblePlayers.length }} 名球员</span>
+        </div>
         <div class="filter-grid">
           <div class="field">
-            <label for="player-keyword">球员名称或位置</label
+            <label for="player-keyword">球员姓名</label
             ><input
               id="player-keyword"
               v-model="keyword"
               type="search"
-              placeholder="输入姓名或位置"
+              placeholder="输入球员姓名"
             />
           </div>
           <div class="field">
@@ -166,6 +188,24 @@ onMounted(loadData)
               <option value="">全部球队</option>
               <option v-for="team in teams" :key="team.id" :value="team.id">{{ team.name }}</option>
             </select>
+          </div>
+          <div class="field">
+            <label for="player-position-filter">位置</label
+            ><select id="player-position-filter" v-model="positionFilter">
+              <option value="">全部位置</option>
+              <option v-for="position in positions" :key="position" :value="position">{{ position }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="player-number-filter">号码</label
+            ><input
+              id="player-number-filter"
+              v-model="numberFilter"
+              type="number"
+              min="0"
+              max="99"
+              placeholder="输入号码"
+            />
           </div>
         </div>
         <div class="filter-actions">
@@ -207,6 +247,9 @@ onMounted(loadData)
 .filter-panel {
   margin-bottom: 20px;
 }
+.search-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.search-heading .section-title { margin-bottom: 3px; }
+.search-heading p { margin: 0; color: var(--muted-strong); font-size: 13px; }
 .player-grid {
   margin-top: 20px;
 }
@@ -224,5 +267,8 @@ onMounted(loadData)
   .field-wide {
     grid-column: span 1;
   }
+}
+@media (max-width: 620px) {
+  .search-heading { flex-direction: column; }
 }
 </style>

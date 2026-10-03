@@ -16,7 +16,7 @@ const handleLogout = async () => {
   <header class="app-header">
     <RouterLink class="brand" to="/" aria-label="返回首页">
       <span class="brand-mark">H</span>
-      <span>
+      <span class="brand-copy">
         <strong>手球数据平台</strong>
         <small>Handball Intelligence</small>
       </span>
@@ -24,6 +24,7 @@ const handleLogout = async () => {
 
     <div class="header-actions">
       <nav class="primary-nav" aria-label="主导航">
+        <RouterLink to="/">首页</RouterLink>
         <RouterLink to="/competitions">赛事</RouterLink>
         <RouterLink to="/matches">比赛</RouterLink>
         <RouterLink to="/teams">球队</RouterLink>
@@ -35,9 +36,7 @@ const handleLogout = async () => {
         >
           知识库
         </RouterLink>
-        <RouterLink v-if="authStore.hasPermission('use_match_agent')" to="/agent">
-          分析 Agent
-        </RouterLink>
+        <RouterLink v-if="authStore.hasPermission('use_match_agent')" to="/agent">分析 Agent</RouterLink>
         <RouterLink v-if="authStore.hasPermission('manage_users')" to="/admin/users">
           用户管理
         </RouterLink>
@@ -63,10 +62,12 @@ const handleLogout = async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 72px;
-  padding: 0 5vw;
-  border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.94);
+  min-height: 76px;
+  padding: 0 max(28px, calc((100vw - 1360px) / 2));
+  border-bottom: 0;
+  color: white;
+  background: rgba(7, 26, 47, 0.98);
+  box-shadow: 0 8px 30px rgba(7, 26, 47, 0.12);
   backdrop-filter: blur(16px);
 }
 
@@ -74,27 +75,25 @@ const handleLogout = async () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: var(--ink);
+  color: white;
 }
 
 .brand-mark {
   display: grid;
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   place-items: center;
-  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 11px;
   color: white;
   background: var(--primary);
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
 }
 
-.brand strong,
-.brand small {
-  display: block;
-}
-
-.brand strong { font-size: 15px; }
-.brand small { margin-top: 2px; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+.brand-copy { display: grid; gap: 1px; }
+.brand strong { font-size: 15px; font-weight: 700; }
+.brand small { color: #9eafc5; font-size: 9px; letter-spacing: .03em; }
 
 .primary-nav {
   display: flex;
@@ -109,41 +108,40 @@ const handleLogout = async () => {
 }
 
 .header-actions { gap: 18px; }
-.account-area { gap: 9px; padding-left: 16px; border-left: 1px solid var(--border); }
-.session-status { color: var(--muted); font-size: 12px; }
+.account-area { gap: 9px; padding-left: 16px; border-left: 1px solid rgba(255, 255, 255, 0.13); }
+.session-status { color: #9eafc5; font-size: 12px; }
 .user-name { max-width: 120px; overflow: hidden; font-size: 13px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
 .account-button {
   min-height: 34px;
   padding: 0 11px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  color: var(--muted-strong);
-  background: white;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 11px;
+  color: white;
+  background: #12375f;
   cursor: pointer;
   font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
 }
-.account-button:hover { border-color: #bcc6d8; background: var(--surface-soft); }
-.login-link { display: inline-flex; align-items: center; color: var(--primary-dark); }
+.account-button:hover { border-color: rgba(255, 255, 255, 0.28); background: #194875; }
+.login-link { display: inline-flex; align-items: center; color: white; }
 
 .primary-nav a {
-  padding: 9px 13px;
-  border-radius: 10px;
-  color: var(--muted-strong);
+  padding: 27px 10px 23px;
+  border-bottom: 3px solid transparent;
+  color: #aebbd0;
   font-size: 14px;
   font-weight: 650;
 }
 
 .primary-nav a:hover,
 .primary-nav a.router-link-active {
-  color: var(--primary-dark);
-  background: var(--primary-soft);
+  color: white;
+  border-bottom-color: var(--primary);
 }
 
 @media (max-width: 760px) {
-  .app-header { flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 20px; }
-  .brand small { display: none; }
+  .app-header { flex-wrap: wrap; align-items: center; gap: 12px; min-height: 64px; padding: 12px 16px; }
   .header-actions {
     width: 100%;
     max-width: none;

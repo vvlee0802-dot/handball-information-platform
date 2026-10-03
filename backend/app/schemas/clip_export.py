@@ -15,6 +15,13 @@ class PlayerHighlightCreate(BaseModel):
     event_types: list[EventType] = Field(min_length=1, max_length=10)
 
 
+class ClipExportSegmentRead(BaseModel):
+    event_id: int
+    source_timestamp_seconds: float
+    highlight_start_seconds: float
+    duration_seconds: float
+
+
 class ClipExportRead(BaseModel):
     id: int
     match_id: int
@@ -25,6 +32,7 @@ class ClipExportRead(BaseModel):
     export_type: Literal["event_clips", "player_highlight"]
     player_id: int | None
     event_types: list[EventType]
+    segments: list[ClipExportSegmentRead]
     size_bytes: int | None
     duration_seconds: float | None
     failure_reason: str | None

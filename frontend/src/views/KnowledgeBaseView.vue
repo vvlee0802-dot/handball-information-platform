@@ -255,68 +255,45 @@ watch(
     <main class="page-container knowledge-page">
       <header class="page-heading">
         <div>
-          <p class="eyebrow">Handball Knowledge Base</p>
-          <h1>手球知识库</h1>
+          <p class="eyebrow">Knowledge center</p>
+          <h1>手球资料库</h1>
           <p class="page-description">
-            上传规则、战术和内部资料。系统保存原文件，并拆分为带页码或章节来源的文本块。
+            从资料上传、内容解析到有依据的问答，在一个连续流程中管理规则、赛事规程、战术和内部资料。
           </p>
         </div>
       </header>
 
       <section v-if="!canManage && !canQuery" class="panel empty-state">
-        当前账号没有知识库访问权限。
+        当前账号没有资料库访问权限。
       </section>
 
       <template v-else>
-        <section v-if="canQuery" class="panel question-panel">
-          <div>
-            <p class="eyebrow">US8.2 Grounded question answering</p>
-            <h2 class="section-title">向知识库提问</h2>
-            <p>系统只根据已上传文档回答，并展示文档名、页码或章节和引用片段。</p>
+        <section class="knowledge-flow" aria-label="资料库使用流程">
+          <div v-if="canManage" class="flow-item">
+            <span>01</span>
+            <strong>上传资料</strong>
+            <small>添加规则、规程与内部文档</small>
           </div>
-          <form class="question-form" @submit.prevent="askQuestion">
-            <textarea
-              v-model="question"
-              rows="3"
-              maxlength="2000"
-              placeholder="例如：手球比赛中，什么情况下会判罚七米球？"
-            />
-            <button class="button button-primary" type="submit" :disabled="asking || question.trim().length < 2">
-              {{ asking ? '正在检索并回答…' : '提问' }}
-            </button>
-          </form>
-          <p v-if="questionError" class="message error">{{ questionError }}</p>
-          <article v-if="answer" class="answer-card" :class="{ insufficient: answer.insufficient_evidence }">
-            <div class="answer-heading">
-              <strong>{{ answer.insufficient_evidence ? '未找到可靠依据' : '知识库回答' }}</strong>
-              <span>{{ answer.answer_model }} · {{ answer.embedding_model }}</span>
-            </div>
-            <p>{{ answer.answer }}</p>
-            <div v-if="answer.citations.length" class="citation-list">
-              <strong>引用来源</strong>
-              <button
-                v-for="citation in answer.citations"
-                :key="citation.chunk_id"
-                type="button"
-                @click="inspectCitation(citation.document_id)"
-              >
-                <span>
-                  {{ citation.document_name }}
-                  <template v-if="citation.page_number">· 第 {{ citation.page_number }} 页</template>
-                  <template v-else-if="citation.section_title">· {{ citation.section_title }}</template>
-                  · 相关度 {{ (citation.score * 100).toFixed(1) }}%
-                </span>
-                <small>{{ citation.excerpt }}</small>
-              </button>
-            </div>
-          </article>
+          <div v-if="canManage" class="flow-item">
+            <span>02</span>
+            <strong>检查解析</strong>
+            <small>确认页码、章节与文本分块</small>
+          </div>
+          <div v-if="canQuery" class="flow-item">
+            <span>{{ canManage ? '03' : '01' }}</span>
+            <strong>检索提问</strong>
+            <small>获得带原文出处的回答</small>
+          </div>
         </section>
 
-        <section v-if="canManage" class="panel upload-panel">
-          <div>
-            <p class="eyebrow">US8.1 Document ingestion</p>
-            <h2 class="section-title">上传知识文档</h2>
-            <p>支持带文本层的 PDF、UTF-8 TXT 和 Markdown，单个文件最大 20 MiB。</p>
+        <section v-if="canManage" class="panel workflow-panel upload-panel">
+          <div class="workflow-heading">
+            <span class="step-number">01</span>
+            <div>
+              <p class="eyebrow">Add source material</p>
+            <h2 class="section-title">上传资料</h2>
+              <p>先添加可检索的原始资料。支持带文本层的 PDF、UTF-8 TXT 和 Markdown，单个文件最大 20 MiB。</p>
+            </div>
           </div>
           <div class="upload-controls">
             <label class="file-field">
@@ -331,7 +308,7 @@ watch(
             <label>
               可见范围
               <select v-model="visibility">
-                <option value="platform">知识库用户可见</option>
+                <option value="platform">资料库用户可见</option>
                 <option value="team_private" :disabled="!canChooseAnyTeam && authStore.user?.team_id === null">
                   所属球队可见
                 </option>
@@ -362,11 +339,19 @@ watch(
         <p v-if="successMessage" class="message success">{{ successMessage }}</p>
         <p v-if="errorMessage" class="message error">{{ errorMessage }}</p>
 
-        <section v-if="canManage" class="knowledge-layout">
+        <section v-if="canManage" class="workflow-section">
+          <div class="workflow-heading section-workflow-heading">
+            <span class="step-number">02</span>
+            <div>
+              <p class="eyebrow">Review and verify</p>
+              <h2 class="section-title">检查资料与解析结果</h2>
+              <p>确认文档已成功解析，并抽查页码、章节和文本内容是否正确。</p>
+            </div>
+          </div>
+          <div class="knowledge-layout">
           <div class="panel document-panel">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Documents</p>
                 <h2 class="section-title">已上传文档</h2>
               </div>
               <span>{{ documents.length }} 份</span>
@@ -388,7 +373,7 @@ watch(
                     {{ document.chunk_count }} 个分块
                   </span>
                   <small>
-                    {{ document.visibility === 'platform' ? '知识库用户可见' : document.visibility === 'team_private' ? `${document.team_name ?? '球队'}可见` : '仅上传者和管理员可见' }}
+                    {{ document.visibility === 'platform' ? '资料库用户可见' : document.visibility === 'team_private' ? `${document.team_name ?? '球队'}可见` : '仅上传者和管理员可见' }}
                   </small>
                 </button>
                 <div class="document-actions">
@@ -424,7 +409,6 @@ watch(
             <template v-if="selectedDocument">
               <div class="panel-heading">
                 <div>
-                  <p class="eyebrow">Parsed chunks</p>
                   <h2 class="section-title">解析结果</h2>
                 </div>
                 <span>{{ selectedDocument.chunk_count }} 块</span>
@@ -449,12 +433,60 @@ watch(
             </template>
             <div v-else class="empty-state">点击左侧文档查看分块内容和来源。</div>
           </aside>
+          </div>
+        </section>
+
+        <section v-if="canQuery" class="panel workflow-panel question-panel">
+          <div class="workflow-heading">
+            <span class="step-number">{{ canManage ? '03' : '01' }}</span>
+            <div>
+              <p class="eyebrow">Ask with evidence</p>
+              <h2 class="section-title">向资料库提问</h2>
+              <p>系统只根据已上传文档回答，并展示文档名、页码或章节和引用片段。</p>
+            </div>
+          </div>
+          <form class="question-form" @submit.prevent="askQuestion">
+            <textarea
+              v-model="question"
+              rows="3"
+              maxlength="2000"
+              placeholder="例如：手球比赛中，什么情况下会判罚七米球？"
+            />
+            <button class="button button-primary" type="submit" :disabled="asking || question.trim().length < 2">
+              {{ asking ? '正在检索并回答…' : '提问' }}
+            </button>
+          </form>
+          <p v-if="questionError" class="message error">{{ questionError }}</p>
+          <article v-if="answer" class="answer-card" :class="{ insufficient: answer.insufficient_evidence }">
+            <div class="answer-heading">
+              <strong>{{ answer.insufficient_evidence ? '未找到可靠依据' : '资料库回答' }}</strong>
+              <span>{{ answer.answer_model }} · {{ answer.embedding_model }}</span>
+            </div>
+            <p>{{ answer.answer }}</p>
+            <div v-if="answer.citations.length" class="citation-list">
+              <strong>引用来源</strong>
+              <button
+                v-for="citation in answer.citations"
+                :key="citation.chunk_id"
+                type="button"
+                @click="inspectCitation(citation.document_id)"
+              >
+                <span>
+                  {{ citation.document_name }}
+                  <template v-if="citation.page_number">· 第 {{ citation.page_number }} 页</template>
+                  <template v-else-if="citation.section_title">· {{ citation.section_title }}</template>
+                  · 相关度 {{ (citation.score * 100).toFixed(1) }}%
+                </span>
+                <small>{{ citation.excerpt }}</small>
+              </button>
+            </div>
+          </article>
         </section>
 
         <section v-if="canManage" class="panel evaluation-panel">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">US8.4 RAG evaluation</p>
+              <p class="eyebrow">Quality control</p>
               <h2 class="section-title">固定问题集与自动评测</h2>
               <p>给问题指定正确来源，系统保存每次评测的模型配置、检索分数和引用结果。</p>
             </div>
@@ -536,41 +568,61 @@ watch(
 </template>
 
 <style scoped>
-.knowledge-page { max-width: 1280px; }
-.question-panel,
-.upload-panel { display: grid; gap: 18px; }
-.question-panel { margin-bottom: 20px; }
-.question-panel p,
-.upload-panel p { margin: 0; color: var(--muted-strong); }
+.knowledge-page { max-width: 1392px; padding-top: 48px; }
+.knowledge-page > .page-heading { margin-bottom: 28px; }
+.knowledge-page > .page-heading h1 { font-size: clamp(36px, 5vw, 58px); letter-spacing: -.045em; }
+.knowledge-page > .page-heading .page-description { max-width: 820px; font-size: 16px; line-height: 1.8; }
+
+.knowledge-flow { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 22px; }
+.flow-item { position: relative; display: grid; min-height: 112px; align-content: center; gap: 4px; padding: 20px 22px 20px 66px; border: 1px solid var(--border); border-radius: 16px; background: rgba(10, 21, 36, .72); backdrop-filter: blur(16px); }
+.flow-item > span { position: absolute; top: 20px; left: 20px; color: #6fa7ff; font-size: 12px; font-weight: 800; letter-spacing: .12em; }
+.flow-item strong { font-size: 16px; }
+.flow-item small { color: var(--muted-strong); line-height: 1.55; }
+
+.workflow-panel { position: relative; display: grid; gap: 22px; margin-bottom: 22px; overflow: hidden; }
+.workflow-panel::before { position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: linear-gradient(90deg, #125bf0, #5f9dff 45%, transparent 88%); content: ''; }
+.workflow-heading { display: flex; align-items: flex-start; gap: 16px; }
+.workflow-heading > div { min-width: 0; }
+.workflow-heading .section-title { margin-bottom: 5px; font-size: 22px; }
+.workflow-heading p { margin: 0; color: var(--muted-strong); }
+.workflow-heading .eyebrow { margin-bottom: 6px; color: #6fa7ff; }
+.step-number { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(95, 157, 255, .4); border-radius: 13px; color: #9dc2ff; background: rgba(18, 91, 240, .15); font-size: 12px; font-weight: 850; letter-spacing: .08em; }
+.workflow-section { margin: 34px 0 22px; }
+.section-workflow-heading { margin: 0 0 16px 2px; }
+.section-workflow-heading p { margin: 0; color: var(--muted-strong); }
+
 .question-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; }
-.question-form textarea { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 10px; outline: none; resize: vertical; }
+.question-form textarea { width: 100%; min-height: 92px; padding: 15px 16px; border: 1px solid var(--border); border-radius: 14px; outline: none; color: var(--ink); background: var(--surface-soft); resize: vertical; }
 .question-form textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
-.answer-card { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--primary); border-radius: 14px; background: var(--primary-soft); }
-.answer-card.insufficient { border-color: #efd499; background: #fff9eb; }
+.answer-card { display: grid; gap: 14px; padding: 20px; border: 1px solid rgba(95, 157, 255, .38); border-radius: 16px; background: rgba(18, 91, 240, .09); }
+.answer-card.insufficient { border-color: rgba(230, 171, 69, .4); background: rgba(179, 117, 18, .1); }
 .answer-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .answer-heading span { color: var(--muted); font-size: 12px; }
-.answer-card > p { color: var(--ink); line-height: 1.75; white-space: pre-wrap; }
+.answer-card > p { margin: 0; color: var(--ink); line-height: 1.78; white-space: pre-wrap; }
 .citation-list { display: grid; gap: 8px; }
-.citation-list > button { display: grid; gap: 5px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px; color: var(--ink); background: white; text-align: left; cursor: pointer; }
-.citation-list span { color: var(--primary-dark); font-size: 13px; font-weight: 750; }
+.citation-list > button { display: grid; gap: 5px; padding: 13px 14px; border: 1px solid var(--border); border-radius: 12px; color: var(--ink); background: rgba(8, 18, 31, .72); text-align: left; cursor: pointer; }
+.citation-list > button:hover { border-color: var(--border-strong); background: var(--surface-muted); }
+.citation-list span { color: #85b4ff; font-size: 13px; font-weight: 750; }
 .citation-list small { color: var(--muted-strong); line-height: 1.55; }
+
 .upload-controls { display: grid; grid-template-columns: minmax(280px, 1.4fr) minmax(220px, .8fr) auto; align-items: end; gap: 14px; }
 .upload-controls label { display: grid; gap: 7px; color: var(--muted-strong); font-size: 12px; font-weight: 700; }
 .upload-controls input,
-.upload-controls select { width: 100%; min-height: 42px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: white; }
-.selected-file { font-size: 13px; }
-.message { margin: 14px 0 0; padding: 12px 14px; border-radius: 10px; }
+.upload-controls select { width: 100%; min-height: 44px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 11px; color: var(--ink); background: var(--surface-soft); }
+.selected-file { margin: -8px 0 0; color: #8fbaff; font-size: 13px; }
+.message { margin: 14px 0 0; padding: 12px 14px; border-radius: 12px; }
 .message.success { color: var(--success); background: var(--success-soft); }
 .message.error { color: var(--danger); background: var(--danger-soft); }
-.knowledge-layout { display: grid; grid-template-columns: minmax(460px, .95fr) minmax(0, 1.05fr); gap: 18px; margin-top: 20px; }
+
+.knowledge-layout { display: grid; grid-template-columns: minmax(420px, .95fr) minmax(0, 1.05fr); gap: 16px; }
 .document-panel,
 .chunk-panel { min-height: 420px; }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .panel-heading > span { color: var(--muted); font-size: 13px; }
 .document-list,
 .chunk-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.document-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 14px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; }
-.document-list li.selected { border-color: var(--primary); background: var(--primary-soft); }
+.document-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 14px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: rgba(7, 16, 29, .38); }
+.document-list li.selected { border-color: rgba(95, 157, 255, .65); background: var(--primary-soft); }
 .document-main { display: grid; gap: 5px; padding: 0; color: var(--ink); text-align: left; background: transparent; cursor: pointer; }
 .document-main span,
 .document-main small,
@@ -580,18 +632,19 @@ watch(
 .document-error { grid-column: 1 / -1; margin: 0; color: var(--danger); font-size: 13px; }
 .chunk-panel { max-height: 760px; overflow: auto; }
 .chunk-summary { margin: 0 0 14px; font-size: 13px; }
-.chunk-list li { padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); }
+.chunk-list li { padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: rgba(7, 16, 29, .55); }
 .chunk-list li > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.chunk-list span { color: var(--primary-dark); font-size: 12px; font-weight: 700; }
+.chunk-list span { color: #85b4ff; font-size: 12px; font-weight: 700; }
 .chunk-list p { margin: 10px 0 0; color: var(--muted-strong); line-height: 1.65; white-space: pre-wrap; }
-.failed-detail { padding: 16px; border: 1px solid #efb4b4; border-radius: 12px; color: var(--danger); background: var(--danger-soft); }
+.failed-detail { padding: 16px; border: 1px solid rgba(255, 82, 96, .4); border-radius: 12px; color: var(--danger); background: var(--danger-soft); }
 .failed-detail p { margin: 7px 0 0; }
-.evaluation-panel { display: grid; gap: 18px; margin-top: 20px; }
+
+.evaluation-panel { display: grid; gap: 18px; margin-top: 22px; }
 .evaluation-panel .panel-heading p { margin: 6px 0 0; color: var(--muted-strong); }
 .evaluation-form { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(240px, .7fr) auto; align-items: end; gap: 12px; }
 .evaluation-form label { display: grid; gap: 7px; color: var(--muted-strong); font-size: 12px; font-weight: 700; }
 .evaluation-form input,
-.evaluation-form select { min-height: 42px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: white; }
+.evaluation-form select { min-height: 42px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--ink); background: var(--surface-soft); }
 .evaluation-form select { min-height: 88px; }
 .evaluation-grid { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 18px; }
 .evaluation-grid h3 { margin: 0 0 10px; font-size: 15px; }
@@ -601,14 +654,16 @@ watch(
 .evaluation-case-list span { color: var(--muted); font-size: 12px; }
 .evaluation-case-list button { color: var(--danger); background: transparent; cursor: pointer; }
 .evaluation-run { margin-bottom: 8px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-.evaluation-run > button { display: grid; gap: 5px; width: 100%; padding: 12px; color: var(--ink); background: white; text-align: left; cursor: pointer; }
+.evaluation-run > button { display: grid; gap: 5px; width: 100%; padding: 12px; color: var(--ink); background: var(--surface-soft); text-align: left; cursor: pointer; }
 .evaluation-run > button span { color: var(--muted-strong); font-size: 12px; }
-.evaluation-details { display: grid; gap: 8px; padding: 12px; border-top: 1px solid var(--border); background: var(--surface-soft); }
+.evaluation-details { display: grid; gap: 8px; padding: 12px; border-top: 1px solid var(--border); background: rgba(7, 16, 29, .48); }
 .evaluation-details > p { margin: 0; color: var(--muted); font-size: 12px; }
-.evaluation-details > div { display: grid; gap: 4px; padding: 9px; border-radius: 8px; background: white; }
+.evaluation-details > div { display: grid; gap: 4px; padding: 9px; border-radius: 8px; background: var(--surface-soft); }
 .evaluation-details span,
 .evaluation-details small { color: var(--muted-strong); }
+
 @media (max-width: 900px) {
+  .knowledge-flow { grid-template-columns: 1fr; }
   .question-form,
   .upload-controls,
   .knowledge-layout,
@@ -617,7 +672,10 @@ watch(
   .chunk-panel { max-height: none; }
 }
 @media (max-width: 620px) {
+  .knowledge-page { padding-top: 30px; }
+  .workflow-heading { gap: 12px; }
   .document-list li { grid-template-columns: 1fr; }
   .document-actions { justify-content: flex-start; }
+  .answer-heading { align-items: flex-start; flex-direction: column; }
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -24,6 +24,21 @@ const formError = ref('')
 const competitions = ref<CompetitionRecord[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
+const filters = reactive({ name: '', season: '', stage: '', status: '' })
+const visibleCompetitions = computed(() => {
+  const name = filters.name.trim().toLocaleLowerCase('zh-CN')
+  const season = filters.season.trim().toLocaleLowerCase('zh-CN')
+  const stage = filters.stage.trim().toLocaleLowerCase('zh-CN')
+  return competitions.value.filter(
+    (competition) =>
+      (!name || competition.name.toLocaleLowerCase('zh-CN').includes(name)) &&
+      (!season || competition.season.toLocaleLowerCase('zh-CN').includes(season)) &&
+      (!stage || (competition.stage ?? '').toLocaleLowerCase('zh-CN').includes(stage)) &&
+      (!filters.status || competition.status === filters.status),
+  )
+})
+
+const clearFilters = () => Object.assign(filters, { name: '', season: '', stage: '', status: '' })
 
 const loadCompetitions = async () => {
   isLoading.value = true
@@ -75,6 +90,43 @@ onMounted(loadCompetitions)
           <p class="page-description">从赛事和赛季进入对应比赛列表。</p>
         </div>
       </header>
+
+      <section class="panel search-panel" aria-labelledby="competition-search-title">
+        <div class="search-heading">
+          <div>
+            <h2 id="competition-search-title" class="section-title">搜索赛事</h2>
+            <p>按名称、赛季、阶段或状态查找赛事。</p>
+          </div>
+          <span class="meta-chip">{{ visibleCompetitions.length }} 项结果</span>
+        </div>
+        <div class="filter-grid">
+          <div class="field">
+            <label for="competition-name-filter">赛事名称</label>
+            <input id="competition-name-filter" v-model="filters.name" type="search" placeholder="输入赛事名称" />
+          </div>
+          <div class="field">
+            <label for="competition-season-filter">赛季</label>
+            <input id="competition-season-filter" v-model="filters.season" type="search" placeholder="例如：2026" />
+          </div>
+          <div class="field">
+            <label for="competition-stage-filter">赛事阶段</label>
+            <input id="competition-stage-filter" v-model="filters.stage" type="search" placeholder="例如：小组赛" />
+          </div>
+          <div class="field">
+            <label for="competition-status-filter">状态</label>
+            <select id="competition-status-filter" v-model="filters.status">
+              <option value="">全部状态</option>
+              <option value="draft">草稿</option>
+              <option value="active">进行中</option>
+              <option value="completed">已结束</option>
+              <option value="archived">已归档</option>
+            </select>
+          </div>
+        </div>
+        <div class="filter-actions">
+          <button class="button button-secondary" type="button" @click="clearFilters">清除筛选</button>
+        </div>
+      </section>
 
       <section v-if="authStore.hasPermission('manage_competition_data')" class="panel competition-form-panel">
         <h2 class="section-title">新增赛事</h2>
@@ -147,9 +199,12 @@ onMounted(loadCompetitions)
       <div v-else-if="competitions.length === 0" class="panel empty-state">
         数据库中还没有赛事，请使用上方表单创建第一条赛事数据。
       </div>
+      <div v-else-if="visibleCompetitions.length === 0" class="panel empty-state">
+        没有符合当前条件的赛事。
+      </div>
       <section v-else class="entity-grid">
         <RouterLink
-          v-for="item in competitions"
+          v-for="item in visibleCompetitions"
           :key="item.id"
           class="list-card"
           :to="{ name: 'competition-detail', params: { competitionId: item.id } }"
@@ -171,5 +226,12 @@ onMounted(loadCompetitions)
 <style scoped>
 .competition-form-panel {
   margin-bottom: 24px;
+}
+.search-panel { margin-bottom: 20px; }
+.search-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.search-heading .section-title { margin-bottom: 3px; }
+.search-heading p { margin: 0; color: var(--muted-strong); font-size: 13px; }
+@media (max-width: 620px) {
+  .search-heading { flex-direction: column; }
 }
 </style>

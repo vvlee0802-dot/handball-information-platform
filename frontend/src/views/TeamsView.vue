@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -16,14 +16,27 @@ const isLoading = ref(true)
 const errorMessage = ref('')
 const isSubmitting = ref(false)
 const formError = ref('')
-const form = reactive<TeamInput>({
+const filters = reactive({ name: '', country: '', city: '', gender: '' })
+const form = reactive<Omit<TeamInput, 'short_name' | 'description'>>({
   name: '',
-  short_name: '',
   city: '',
   country: '',
   gender: 'men',
-  description: '',
 })
+const visibleTeams = computed(() => {
+  const name = filters.name.trim().toLocaleLowerCase('zh-CN')
+  const country = filters.country.trim().toLocaleLowerCase('zh-CN')
+  const city = filters.city.trim().toLocaleLowerCase('zh-CN')
+  return teams.value.filter(
+    (team) =>
+      (!name || team.name.toLocaleLowerCase('zh-CN').includes(name)) &&
+      (!country || team.country.toLocaleLowerCase('zh-CN').includes(country)) &&
+      (!city || team.city.toLocaleLowerCase('zh-CN').includes(city)) &&
+      (!filters.gender || team.gender === filters.gender),
+  )
+})
+
+const clearFilters = () => Object.assign(filters, { name: '', country: '', city: '', gender: '' })
 
 const loadTeams = async () => {
   isLoading.value = true
@@ -41,14 +54,16 @@ const handleCreate = async () => {
   formError.value = ''
   isSubmitting.value = true
   try {
-    await createTeam({ ...form, description: form.description || null })
+    await createTeam({
+      ...form,
+      short_name: form.name.trim().slice(0, 50),
+      description: null,
+    })
     Object.assign(form, {
       name: '',
-      short_name: '',
       city: '',
       country: '',
       gender: 'men',
-      description: '',
     })
     await loadTeams()
   } catch (error) {
@@ -73,6 +88,41 @@ onMounted(loadTeams)
         </div>
       </header>
 
+      <section class="panel search-panel" aria-labelledby="team-search-title">
+        <div class="search-heading">
+          <div>
+            <h2 id="team-search-title" class="section-title">搜索球队</h2>
+            <p>按球队名称、国家或地区、城市和组别筛选。</p>
+          </div>
+          <span class="meta-chip">{{ visibleTeams.length }} 支球队</span>
+        </div>
+        <div class="filter-grid">
+          <div class="field">
+            <label for="team-name-filter">球队名称</label>
+            <input id="team-name-filter" v-model="filters.name" type="search" placeholder="输入球队名称" />
+          </div>
+          <div class="field">
+            <label for="team-country-filter">国家或地区</label>
+            <input id="team-country-filter" v-model="filters.country" type="search" placeholder="输入国家或地区" />
+          </div>
+          <div class="field">
+            <label for="team-city-filter">所在城市</label>
+            <input id="team-city-filter" v-model="filters.city" type="search" placeholder="输入城市" />
+          </div>
+          <div class="field">
+            <label for="team-gender-filter">组别</label>
+            <select id="team-gender-filter" v-model="filters.gender">
+              <option value="">全部组别</option>
+              <option value="men">男子</option>
+              <option value="women">女子</option>
+            </select>
+          </div>
+        </div>
+        <div class="filter-actions">
+          <button class="button button-secondary" type="button" @click="clearFilters">清除筛选</button>
+        </div>
+      </section>
+
       <section v-if="authStore.hasPermission('manage_competition_data')" class="panel entity-form-panel">
         <h2 class="section-title">新增球队</h2>
         <form @submit.prevent="handleCreate">
@@ -80,10 +130,6 @@ onMounted(loadTeams)
             <div class="field">
               <label for="team-name">球队名称</label
               ><input id="team-name" v-model="form.name" required maxlength="120" />
-            </div>
-            <div class="field">
-              <label for="team-short-name">简称</label
-              ><input id="team-short-name" v-model="form.short_name" required maxlength="50" />
             </div>
             <div class="field">
               <label for="team-country">国家或地区</label
@@ -99,10 +145,6 @@ onMounted(loadTeams)
                 <option value="men">男子</option>
                 <option value="women">女子</option>
               </select>
-            </div>
-            <div class="field field-wide">
-              <label for="team-description">简介</label
-              ><input id="team-description" v-model="form.description" maxlength="500" />
             </div>
           </div>
           <p v-if="formError" class="form-message form-message-error">创建失败：{{ formError }}</p>
@@ -122,9 +164,12 @@ onMounted(loadTeams)
       <div v-else-if="teams.length === 0" class="panel empty-state">
         数据库中还没有球队，请使用上方表单创建第一支球队。
       </div>
+      <div v-else-if="visibleTeams.length === 0" class="panel empty-state">
+        没有符合当前条件的球队。
+      </div>
       <section v-else class="entity-grid">
         <RouterLink
-          v-for="team in teams"
+          v-for="team in visibleTeams"
           :key="team.id"
           class="list-card"
           :to="{ name: 'team-detail', params: { teamId: team.id } }"
@@ -145,9 +190,10 @@ onMounted(loadTeams)
 .entity-form-panel {
   margin-bottom: 24px;
 }
-.field-wide {
-  grid-column: span 3;
-}
+.search-panel { margin-bottom: 20px; }
+.search-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.search-heading .section-title { margin-bottom: 3px; }
+.search-heading p { margin: 0; color: var(--muted-strong); font-size: 13px; }
 .form-message {
   margin: 16px 0 0;
   font-weight: 650;
@@ -155,9 +201,7 @@ onMounted(loadTeams)
 .form-message-error {
   color: var(--danger);
 }
-@media (max-width: 900px) {
-  .field-wide {
-    grid-column: span 1;
-  }
+@media (max-width: 620px) {
+  .search-heading { flex-direction: column; }
 }
 </style>

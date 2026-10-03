@@ -8,11 +8,11 @@ import {
   getClipExportContentUrl,
   listMatchClipExports,
   type ClipExportRecord,
+  type ClipExportSegmentRecord,
 } from '@/services/clipExports'
 import {
   eventTypeLabels,
   listMatchEvents,
-  type EventType,
   type MatchEventRecord,
 } from '@/services/events'
 import {
@@ -26,13 +26,7 @@ import {
   type PlayerStatsMetric,
 } from '@/services/playerStats'
 import { listPlayers, type PlayerRecord } from '@/services/players'
-import {
-  formatBytes,
-  formatDuration,
-  getVideoContentUrl,
-  listMatchVideos,
-  type VideoRecord,
-} from '@/services/videos'
+import { formatBytes, formatDuration } from '@/services/videos'
 import { useAuthStore } from '@/stores/auth'
 
 const metricLabels: Record<PlayerStatsMetric, string> = {
@@ -42,38 +36,32 @@ const metricLabels: Record<PlayerStatsMetric, string> = {
   turnovers: '失误',
   fast_breaks: '快攻',
 }
-const highlightEventTypes: EventType[] = ['goal', 'shot', 'save', 'turnover', 'fast_break']
-const validMetrics = new Set<PlayerStatsMetric>(Object.keys(metricLabels) as PlayerStatsMetric[])
-
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const matchId = computed(() => Number(route.params.matchId))
 const playerId = computed(() => Number(route.params.playerId))
-const initialMetric = validMetrics.has(route.query.metric as PlayerStatsMetric)
-  ? (route.query.metric as PlayerStatsMetric)
-  : 'goals'
-
 const stats = ref<MatchPlayerStatsRecord | null>(null)
 const players = ref<PlayerRecord[]>([])
-const videos = ref<VideoRecord[]>([])
 const allEvents = ref<MatchEventRecord[]>([])
 const metricEvents = ref<MatchEventRecord[]>([])
 const audits = ref<PlayerAssignmentAuditRecord[]>([])
 const exports = ref<ClipExportRecord[]>([])
-const selectedMetric = ref<PlayerStatsMetric>(initialMetric)
+const selectedMetric = ref<PlayerStatsMetric>('goals')
 const activeEvent = ref<MatchEventRecord | null>(null)
+const activeSegment = ref<ClipExportSegmentRecord | null>(null)
 const videoPlayer = ref<HTMLVideoElement | null>(null)
 const selectedCorrectionEventIds = ref<number[]>([])
 const correctionPlayerId = ref<number | null>(null)
-const selectedHighlightTypes = ref<EventType[]>(['goal'])
 const loading = ref(true)
 const metricLoading = ref(false)
 const correctionSaving = ref(false)
 const highlightCreating = ref(false)
 const error = ref('')
 const message = ref('')
+const developmentNotice = ref('')
 let exportPollTimer: number | undefined
+let noticeTimer: number | undefined
 
 const player = computed<PlayerMatchStatsRecord | null>(
   () => stats.value?.players.find((row) => row.player_id === playerId.value) ?? null,
@@ -83,13 +71,17 @@ const participantPlayers = computed(() => {
   const teamIds = new Set([stats.value.home_team_id, stats.value.away_team_id])
   return players.value.filter((item) => teamIds.has(item.team_id))
 })
-const selectedVideo = computed(() =>
-  activeEvent.value ? videos.value.find((video) => video.id === activeEvent.value?.video_id) : null,
-)
 const playerHighlights = computed(() =>
   exports.value.filter(
-    (item) => item.export_type === 'player_highlight' && item.player_id === playerId.value,
+    (item) =>
+      item.export_type === 'player_highlight' &&
+      item.player_id === playerId.value &&
+      item.event_types.length === 1 &&
+      item.event_types[0] === 'goal',
   ),
+)
+const activeHighlight = computed(
+  () => playerHighlights.value.find((item) => item.status === 'completed') ?? null,
 )
 const relevantAudits = computed(() =>
   audits.value.filter(
@@ -153,16 +145,14 @@ const scheduleExportPoll = () => {
 
 const load = async () => {
   try {
-    const [statsData, playerRows, videoRows, eventRows, exportRows] = await Promise.all([
+    const [statsData, playerRows, eventRows, exportRows] = await Promise.all([
       getMatchPlayerStats(matchId.value),
       listPlayers(),
-      listMatchVideos(matchId.value),
       listMatchEvents(matchId.value),
       listMatchClipExports(matchId.value),
     ])
     stats.value = statsData
     players.value = playerRows
-    videos.value = videoRows
     allEvents.value = eventRows
     exports.value = exportRows
     if (authStore.hasPermission('manage_competition_data')) {
@@ -177,25 +167,74 @@ const load = async () => {
   }
 }
 
-const selectMetric = async (metric: PlayerStatsMetric) => {
+const showDevelopmentNotice = (label: string) => {
+  developmentNotice.value = `${label}数据正在开发中，当前版本暂时只支持进球事件。`
+  if (noticeTimer) window.clearTimeout(noticeTimer)
+  noticeTimer = window.setTimeout(() => {
+    developmentNotice.value = ''
+  }, 3600)
+}
+
+const selectMetric = async (metric: PlayerStatsMetric, label: string) => {
+  if (metric !== 'goals') {
+    showDevelopmentNotice(label)
+    return
+  }
   selectedMetric.value = metric
   await router.replace({ query: { ...route.query, metric } })
   await loadMetricEvents()
 }
 
-const playEvent = async (event: MatchEventRecord) => {
-  activeEvent.value = event
-  await nextTick()
-  videoPlayer.value?.load()
-}
-
-const seekActiveEvent = async () => {
-  if (!videoPlayer.value || !activeEvent.value) return
-  videoPlayer.value.currentTime = activeEvent.value.timestamp_seconds
+const startActiveSegment = async () => {
+  if (!videoPlayer.value || !activeSegment.value) return
+  videoPlayer.value.currentTime = activeSegment.value.highlight_start_seconds
   try {
     await videoPlayer.value.play()
   } catch {
-    // 浏览器可能阻止自动播放；时间定位仍然有效。
+    // 浏览器可能阻止自动播放；片段定位仍然有效。
+  }
+}
+
+const playEvent = async (event: MatchEventRecord) => {
+  const segment = activeHighlight.value?.segments.find((item) => item.event_id === event.id)
+  if (!activeHighlight.value || !segment) {
+    developmentNotice.value = '该进球暂时没有可播放的集锦片段，请先生成最新的个人进球集锦。'
+    return
+  }
+  activeEvent.value = event
+  activeSegment.value = segment
+  await nextTick()
+  if (!videoPlayer.value) return
+  if (videoPlayer.value.readyState === 0) {
+    videoPlayer.value.addEventListener('loadedmetadata', () => void startActiveSegment(), {
+      once: true,
+    })
+    videoPlayer.value.load()
+    return
+  }
+  await startActiveSegment()
+}
+
+const playFullHighlight = async () => {
+  activeEvent.value = null
+  activeSegment.value = null
+  await nextTick()
+  if (!videoPlayer.value) return
+  videoPlayer.value.currentTime = 0
+  try {
+    await videoPlayer.value.play()
+  } catch {
+    // 浏览器可能阻止自动播放；用户仍可使用原生播放按钮。
+  }
+}
+
+const stopAtSegmentEnd = () => {
+  if (!videoPlayer.value || !activeSegment.value) return
+  const segmentEnd =
+    activeSegment.value.highlight_start_seconds + activeSegment.value.duration_seconds
+  if (videoPlayer.value.currentTime >= segmentEnd - 0.08) {
+    videoPlayer.value.pause()
+    videoPlayer.value.currentTime = segmentEnd
   }
 }
 
@@ -239,14 +278,13 @@ const saveCorrections = async () => {
 }
 
 const createHighlight = async () => {
-  if (selectedHighlightTypes.value.length === 0) return
   highlightCreating.value = true
   error.value = ''
   try {
     const task = await createPlayerHighlight(
       matchId.value,
       playerId.value,
-      selectedHighlightTypes.value,
+      ['goal'],
     )
     exports.value = [task, ...exports.value]
     message.value = `个人集锦任务已创建，将合并 ${task.event_ids.length} 个事件片段。`
@@ -261,6 +299,7 @@ const createHighlight = async () => {
 onMounted(load)
 onUnmounted(() => {
   if (exportPollTimer) window.clearTimeout(exportPollTimer)
+  if (noticeTimer) window.clearTimeout(noticeTimer)
 })
 </script>
 
@@ -292,12 +331,24 @@ onUnmounted(() => {
             v-for="card in metricCards"
             :key="`${card.label}-${card.metric}`"
             class="metric-card"
-            :class="{ active: selectedMetric === card.metric }"
-            @click="selectMetric(card.metric)"
+            :class="{
+              active: selectedMetric === card.metric && card.metric === 'goals',
+              unavailable: card.metric !== 'goals',
+            }"
+            @click="selectMetric(card.metric, card.label)"
           >
             <span>{{ card.label }}</span><strong>{{ card.value }}</strong>
+            <small v-if="card.metric !== 'goals'">后续开放</small>
           </button>
         </section>
+
+        <Transition name="notice">
+          <div v-if="developmentNotice" class="development-notice" role="status">
+            <strong>功能提示</strong>
+            <span>{{ developmentNotice }}</span>
+            <button type="button" aria-label="关闭通知" @click="developmentNotice = ''">×</button>
+          </div>
+        </Transition>
 
         <p v-if="message" class="success page-message">{{ message }}</p>
         <p v-if="error" class="error page-message">{{ error }}</p>
@@ -305,20 +356,38 @@ onUnmounted(() => {
         <section class="review-layout">
           <div class="detail-card video-review">
             <div class="section-heading">
-              <div><p class="eyebrow">Video Review</p><h2>{{ metricLabels[selectedMetric] }}事件视频</h2></div>
-              <span class="meta-chip">{{ metricEvents.length }} 个有效事件</span>
+              <div><p class="eyebrow">Video Review</p><h2>个人进球集锦</h2></div>
+              <div class="video-heading-actions">
+                <span class="meta-chip">{{ metricEvents.length }} 个进球片段</span>
+                <button
+                  v-if="activeHighlight"
+                  class="button button-secondary"
+                  type="button"
+                  @click="playFullHighlight"
+                >
+                  播放完整集锦
+                </button>
+              </div>
             </div>
             <video
-              v-if="selectedVideo"
+              v-if="activeHighlight"
               ref="videoPlayer"
-              :key="selectedVideo.id"
+              :key="activeHighlight.id"
               class="review-video"
-              :src="getVideoContentUrl(selectedVideo.id)"
+              :src="getClipExportContentUrl(activeHighlight.id)"
               controls
               preload="metadata"
-              @loadedmetadata="seekActiveEvent"
+              @timeupdate="stopAtSegmentEnd"
             />
-            <div v-else class="video-placeholder">点击右侧事件，视频会打开并跳转到准确时间。</div>
+            <div v-else class="video-placeholder">
+              <div>
+                <strong>还没有可播放的个人进球集锦</strong>
+                <p>请在下方生成集锦；生成完成后，这里只播放集锦内容，不会加载整场录像。</p>
+              </div>
+            </div>
+            <p v-if="activeEvent" class="segment-caption">
+              正在播放 {{ formatEventTime(activeEvent.timestamp_seconds) }} 的进球片段，片段结束后会自动暂停。
+            </p>
           </div>
 
           <div class="detail-card event-list-card">
@@ -333,7 +402,7 @@ onUnmounted(() => {
               @click="playEvent(event)"
             >
               <span><strong>{{ formatEventTime(event.timestamp_seconds) }}</strong><small>{{ eventTypeLabels[event.event_type] }}</small></span>
-              <span>定位视频 →</span>
+              <span>播放片段 →</span>
             </button>
             <p v-if="!metricLoading && metricEvents.length === 0" class="empty-state">
               该指标没有已确认事件，不会显示虚构内容。
@@ -343,18 +412,12 @@ onUnmounted(() => {
 
         <section id="player-highlight" class="detail-card highlight-section">
           <div class="section-heading">
-            <div><p class="eyebrow">Personal Highlight</p><h2>生成个人比赛集锦</h2></div>
+            <div><p class="eyebrow">Personal Highlight</p><h2>生成个人进球集锦</h2></div>
           </div>
-          <p class="page-description">选择事件类型后，系统只会按比赛时间合并这名球员的已确认事件。</p>
-          <div class="type-options">
-            <label v-for="eventType in highlightEventTypes" :key="eventType">
-              <input v-model="selectedHighlightTypes" type="checkbox" :value="eventType" />
-              {{ eventTypeLabels[eventType] }}
-            </label>
-          </div>
+          <p class="page-description">系统会按比赛时间合并这名球员所有已确认的进球片段。当前版本暂不生成射门、扑救、失误或快攻集锦。</p>
           <button
             class="button button-primary"
-            :disabled="highlightCreating || selectedHighlightTypes.length === 0"
+            :disabled="highlightCreating"
             @click="createHighlight"
           >
             {{ highlightCreating ? '正在创建…' : '生成个人集锦' }}
@@ -440,23 +503,35 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.player-hero { display: flex; align-items: center; gap: 22px; padding: 26px 30px; border-radius: 20px; color: white; background: linear-gradient(135deg, #172f79, #315bd8); }
+.player-hero { display: flex; align-items: center; gap: 22px; padding: 26px 30px; border: 1px solid var(--border); border-radius: 10px; color: var(--ink); background: white; }
 .player-hero h1 { margin: 0; font-size: 34px; }
-.player-hero p:last-child { margin: 7px 0 0; color: #dbe4ff; }
-.player-hero .eyebrow { color: #b9caff; }
-.highlight-shortcut { margin-left: auto; padding: 10px 14px; border-radius: 10px; color: #193a9d; background: white; font-size: 13px; font-weight: 800; text-decoration: none; }
-.highlight-shortcut:hover { background: #eef3ff; }
-.jersey-number { display: grid; width: 76px; height: 76px; place-items: center; border: 2px solid rgba(255,255,255,.5); border-radius: 22px; font-size: 32px; font-weight: 850; }
+.player-hero p:last-child { margin: 7px 0 0; color: var(--muted-strong); }
+.highlight-shortcut { margin-left: auto; padding: 10px 14px; border: 1px solid var(--border); border-radius: 7px; color: var(--primary-dark); background: white; font-size: 13px; font-weight: 700; text-decoration: none; }
+.highlight-shortcut:hover { background: var(--surface-soft); }
+.jersey-number { display: grid; width: 68px; height: 68px; place-items: center; border: 1px solid var(--border-strong); border-radius: 50%; font-size: 30px; font-weight: 750; }
 .metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
-.metric-card { display: grid; gap: 7px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; color: var(--muted-strong); background: white; cursor: pointer; text-align: left; }
+.metric-card { display: grid; gap: 7px; padding: 16px; border: 1px solid var(--border); border-radius: 7px; color: var(--muted-strong); background: white; cursor: pointer; text-align: left; }
 .metric-card strong { color: var(--ink); font-size: 24px; }
 .metric-card.active { border-color: var(--primary); background: var(--primary-soft); }
+.metric-card small { color: var(--muted); font-size: 11px; font-weight: 650; }
+.metric-card.unavailable { position: relative; }
+.metric-card.unavailable:hover { border-color: #b9c7da; background: var(--surface-soft); }
 .page-message { margin: 16px 0 0; }
+.development-notice { position: fixed; z-index: 40; top: 88px; right: 24px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; max-width: 520px; padding: 14px 16px; border: 1px solid #f4cf7a; border-radius: 12px; color: #754c00; background: #fff8e8; box-shadow: var(--shadow-card); }
+.development-notice strong { white-space: nowrap; }
+.development-notice button { border: 0; color: #8a6420; background: transparent; cursor: pointer; font-size: 20px; line-height: 1; }
+.notice-enter-active, .notice-leave-active { transition: opacity .18s ease, transform .18s ease; }
+.notice-enter-from, .notice-leave-to { opacity: 0; transform: translateY(-8px); }
 .review-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .55fr); gap: 18px; margin-top: 24px; }
 .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .section-heading h2, .event-list-card h2 { margin: 0 0 16px; font-size: 20px; }
-.review-video { width: 100%; margin-top: 8px; border-radius: 14px; background: #080b14; }
-.video-placeholder { display: grid; min-height: 330px; margin-top: 8px; place-items: center; border-radius: 14px; color: var(--muted); background: #f2f4f8; text-align: center; }
+.video-heading-actions { display: flex; align-items: center; gap: 8px; }
+.video-heading-actions .button { min-height: 34px; padding: 7px 11px; }
+.review-video { width: 100%; margin-top: 8px; border-radius: 7px; background: #080b14; }
+.video-placeholder { display: grid; min-height: 330px; margin-top: 8px; place-items: center; border-radius: 7px; color: var(--muted); background: var(--surface-soft); text-align: center; }
+.video-placeholder strong { color: var(--ink); }
+.video-placeholder p { max-width: 520px; margin: 8px 20px 0; }
+.segment-caption { margin: 10px 0 0; color: var(--muted-strong); font-size: 13px; }
 .event-list-card { max-height: 540px; overflow-y: auto; }
 .event-row { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 13px; border: 1px solid var(--border); border-radius: 11px; background: white; cursor: pointer; text-align: left; }
 .event-row + .event-row { margin-top: 8px; }
@@ -465,7 +540,7 @@ onUnmounted(() => {
 .event-row.active { border-color: var(--primary); background: var(--primary-soft); }
 .highlight-section, .correction-section, .audit-section { margin-top: 22px; }
 .type-options { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
-.type-options label { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 999px; }
+.type-options label { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px; }
 .highlight-list { display: grid; gap: 10px; margin-top: 20px; }
 .highlight-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 15px; border: 1px solid var(--border); border-radius: 12px; }
 .highlight-row p { margin: 5px 0; color: var(--muted-strong); }
@@ -491,5 +566,7 @@ onUnmounted(() => {
   .highlight-row { align-items: flex-start; flex-direction: column; }
   .correction-row { grid-template-columns: auto 64px 1fr; }
   .correction-row span:nth-last-child(-n+2) { grid-column: 2 / -1; }
+  .development-notice { top: 72px; right: 12px; left: 12px; }
+  .video-heading-actions { align-items: flex-end; flex-direction: column; }
 }
 </style>

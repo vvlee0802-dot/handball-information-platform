@@ -24,7 +24,7 @@ from app.schemas.video_upload import (
     VideoUploadPartRead,
     VideoUploadSessionRead,
 )
-from app.services.video_processing import process_video
+from app.tasks.queue import dispatch_job
 
 
 router = APIRouter(tags=["videos"])
@@ -323,7 +323,12 @@ def complete_video_upload(
         video_uploads.delete_parts(db, upload_id)
         db.commit()
         shutil.rmtree(upload_directory(upload_id), ignore_errors=True)
-        background_tasks.add_task(process_video, video.id, db.get_bind())
+        dispatch_job(
+            background_tasks,
+            "video_processing",
+            video.id,
+            database_bind=db.get_bind(),
+        )
         return video
     except Exception as error:
         temporary_path.unlink(missing_ok=True)
@@ -457,7 +462,12 @@ async def upload_match_video(
                 duration_seconds=x_video_duration_seconds,
                 video_type=video_type,
             )
-            background_tasks.add_task(process_video, video.id, db.get_bind())
+            dispatch_job(
+                background_tasks,
+                "video_processing",
+                video.id,
+                database_bind=db.get_bind(),
+            )
             return video
         except Exception:
             final_path.unlink(missing_ok=True)
@@ -490,7 +500,12 @@ def retry_video_processing(
         )
 
     queued_video = videos.queue_video_for_retry(db, video)
-    background_tasks.add_task(process_video, queued_video.id, db.get_bind())
+    dispatch_job(
+        background_tasks,
+        "video_processing",
+        queued_video.id,
+        database_bind=db.get_bind(),
+    )
     return queued_video
 
 

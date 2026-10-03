@@ -11,7 +11,7 @@ from app.repositories import match as matches
 from app.repositories import video as videos
 from app.schemas.analysis_task import AnalysisTaskRead
 from app.schemas.analysis_prediction import AnalysisPredictionRead, AnalysisPredictionReview
-from app.services.analysis_task import process_analysis_task
+from app.tasks.queue import dispatch_job
 
 
 router = APIRouter(tags=["analysis-tasks"])
@@ -119,5 +119,10 @@ def start_analysis_task(
         user_id=current_user.id,
     )
     if not reused:
-        background_tasks.add_task(process_analysis_task, task.id, db.get_bind())
+        dispatch_job(
+            background_tasks,
+            "ai_analysis",
+            task.id,
+            database_bind=db.get_bind(),
+        )
     return serialize_analysis_task(task, reused=reused)

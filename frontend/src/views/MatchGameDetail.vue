@@ -1551,21 +1551,27 @@ onUnmounted(() => {
       <RouterLink class="back-link" to="/matches">← 返回比赛列表</RouterLink>
       <div v-if="loading" class="detail-card empty-state">正在加载比赛…</div>
       <NotFoundPanel v-else-if="!match" entity="比赛" />
-      <section v-else class="detail-card">
-        <div class="detail-header">
-          <div>
-            <p class="eyebrow">{{ competition?.name }}</p>
-            <h1 class="detail-title">{{ home?.short_name }} vs {{ away?.short_name }}</h1>
-            <div class="detail-meta">
-              <span class="meta-chip">{{ match.stage }}</span
-              ><span class="meta-chip">{{ matchStatusLabels[match.status] }}</span
-              ><span class="meta-chip"
-                >{{ match.match_date }} {{ match.start_time.slice(0, 5) }}</span
-              >
+      <section v-else class="detail-card match-hero-card">
+        <div class="detail-header match-hero-header">
+          <div class="match-hero-copy">
+            <p class="eyebrow">{{ competition?.name }} · {{ match.stage }}</p>
+            <div class="match-scoreboard">
+              <div class="match-team match-team-home">
+                <small>主队</small>
+                <strong>{{ home?.name ?? home?.short_name ?? '待定' }}</strong>
+              </div>
+              <div class="match-score-block">
+                <div class="score">{{ match.home_score ?? '—' }} : {{ match.away_score ?? '—' }}</div>
+                <span>{{ matchStatusLabels[match.status] }}</span>
+              </div>
+              <div class="match-team match-team-away">
+                <small>客队</small>
+                <strong>{{ away?.name ?? away?.short_name ?? '待定' }}</strong>
+              </div>
             </div>
+            <p class="match-date">{{ match.match_date }} · {{ match.start_time.slice(0, 5) }} · {{ venue?.name ?? '场馆待定' }}</p>
           </div>
           <div class="detail-actions">
-            <div class="score">{{ match.home_score ?? '—' }} : {{ match.away_score ?? '—' }}</div>
             <RouterLink
               v-if="authStore.hasPermission('view_authorized_video')"
               class="button button-secondary"
@@ -3165,6 +3171,24 @@ onUnmounted(() => {
   </div>
 </template>
 <style scoped>
+.match-hero-card {
+  overflow: hidden;
+  border: 0;
+  color: white;
+  background: linear-gradient(135deg, #061628 0%, #0a3557 100%);
+  box-shadow: 0 18px 42px rgba(7, 26, 47, .16);
+}
+.match-hero-header { align-items: center; }
+.match-hero-copy { flex: 1; }
+.match-hero-card .eyebrow { color: #61d3ff; }
+.match-scoreboard { display: grid; grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr); align-items: center; gap: 32px; margin-top: 24px; }
+.match-team { display: grid; gap: 7px; }
+.match-team small { color: #9eafc5; font-size: 11px; font-weight: 700; }
+.match-team strong { font-size: clamp(20px, 2vw, 28px); }
+.match-team-away { text-align: right; }
+.match-score-block { display: grid; justify-items: center; gap: 8px; }
+.match-score-block span { padding: 5px 14px; border-radius: 999px; color: #dbe9f8; background: rgba(22, 91, 145, .55); font-size: 12px; font-weight: 700; }
+.match-date { margin: 22px 0 0; color: #aebdd0; font-size: 13px; text-align: center; }
 .detail-actions {
   display: flex;
   align-items: flex-end;
@@ -3174,7 +3198,11 @@ onUnmounted(() => {
 .score {
   font-size: clamp(40px, 7vw, 68px);
   font-weight: 820;
+  color: white;
 }
+.match-hero-card .button-secondary { border-color: rgba(255, 255, 255, .2); color: white; background: rgba(255, 255, 255, .08); }
+.match-hero-card .button-secondary:hover { background: rgba(255, 255, 255, .16); }
+.match-hero-card .button-danger { background: rgba(255, 46, 61, .14); }
 .edit-form {
   margin-top: 24px;
   padding-top: 24px;
@@ -3193,7 +3221,7 @@ onUnmounted(() => {
 .report-upload-form .field { flex: 1; }
 .report-upload-form input[type='file'] { height: auto; padding: 10px; background: white; }
 .report-preview,
-.official-report-result { display: grid; gap: 18px; margin-top: 20px; padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
+.official-report-result { display: grid; gap: 18px; margin-top: 20px; padding: 20px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-soft); }
 .report-preview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .report-preview-heading > div { display: grid; gap: 6px; }
 .report-preview-heading span { color: var(--muted); font-size: 13px; }
@@ -3248,9 +3276,9 @@ onUnmounted(() => {
 .timeline-team-labels span { color: var(--muted); font-size: 12px; font-weight: 700; text-align: center; }
 .match-event-timeline-scroll { max-height: 900px; margin-top: 14px; overflow-y: auto; }
 .match-event-timeline { position: relative; display: grid; gap: 16px; min-height: 100%; margin: 0; padding: 8px 6px; list-style: none; }
-.match-event-timeline::before { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; border-radius: 999px; background: linear-gradient(#9eb4f5, #315bd8, #9eb4f5); content: ''; transform: translateX(-50%); }
+.match-event-timeline::before { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: var(--border-strong); content: ''; transform: translateX(-50%); }
 .timeline-event { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 74px minmax(0, 1fr); align-items: center; gap: 18px; min-height: 108px; }
-.timeline-event-card { display: grid; gap: 9px; padding: 14px 16px; border: 1px solid #d6def3; border-radius: 14px; background: white; box-shadow: 0 8px 24px rgb(35 60 120 / 8%); }
+.timeline-event-card { display: grid; gap: 9px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: white; box-shadow: 0 8px 24px rgba(7, 26, 47, .05); }
 .timeline-event--home .timeline-event-card { grid-column: 1; text-align: right; }
 .timeline-event--away .timeline-event-card { grid-column: 3; text-align: left; }
 .timeline-event-meta,
@@ -3261,9 +3289,9 @@ onUnmounted(() => {
 .timeline-event-meta time,
 .timeline-event-footer span { color: var(--muted); font-size: 12px; }
 .timeline-event-card > strong { color: #192542; font-size: 15px; }
-.timeline-event--home .timeline-event-card { border-right: 4px solid #315bd8; }
-.timeline-event--away .timeline-event-card { border-left: 4px solid #e15b64; }
-.timeline-marker { z-index: 1; display: grid; width: 38px; height: 38px; grid-column: 2; grid-row: 1; place-self: center; place-items: center; border: 4px solid white; border-radius: 50%; color: white; background: var(--primary); box-shadow: 0 0 0 2px #7692e8; font-size: 11px; font-weight: 800; }
+.timeline-event--home .timeline-event-card { border-right: 3px solid var(--primary); }
+.timeline-event--away .timeline-event-card { border-left: 3px solid #b86759; }
+.timeline-marker { z-index: 1; display: grid; width: 34px; height: 34px; grid-column: 2; grid-row: 1; place-self: center; place-items: center; border: 3px solid white; border-radius: 50%; color: white; background: var(--primary); box-shadow: 0 0 0 1px var(--border-strong); font-size: 11px; font-weight: 750; }
 .timeline-play-button { display: inline-grid; width: 34px; height: 34px; flex: 0 0 34px; padding: 0 0 0 2px; place-items: center; border: 0; border-radius: 50%; color: white; background: var(--primary); cursor: pointer; }
 .timeline-play-button:hover { background: var(--primary-dark); transform: scale(1.04); }
 .timeline-play-button:disabled { color: #8c96aa; background: #e5e9f1; cursor: not-allowed; transform: none; }
@@ -3275,10 +3303,10 @@ onUnmounted(() => {
 .timeline-preview-video { display: block; width: 100%; max-height: 72vh; border-radius: 12px; background: #030712; }
 .video-section { margin-top: 20px; }
 .video-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
-.ai-boundary-note { display: grid; gap: 6px; margin-top: 18px; padding: 14px 16px; border: 1px solid #f2c66d; border-radius: 12px; color: #6b4b0b; background: #fff8e8; }
+.ai-boundary-note { display: grid; gap: 6px; margin-top: 18px; padding: 14px 16px; border: 1px solid #e3d3ac; border-radius: 7px; color: #6b4b0b; background: #fbf7ed; }
 .ai-boundary-note strong { color: #7a4b00; }
 .ai-boundary-note p { margin: 0; font-size: 13px; line-height: 1.55; }
-.upload-form { margin-top: 22px; padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
+.upload-form { margin-top: 22px; padding: 20px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
 .upload-form input[type='file'] { height: auto; padding: 10px; background: white; }
 .video-type-field { margin-top: 14px; }
 .selected-file,

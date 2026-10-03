@@ -69,7 +69,11 @@ def test_running_video_analysis_is_reused_instead_of_duplicated(
     match_id, _, _, _ = create_match_and_player(client)
     coach = replace_login(client, email="ai-deduplicate@example.com", role=UserRole.COACH_ANALYST)
     video_id = create_video(match_id, coach.id)
-    monkeypatch.setattr(analysis_task_routes, "process_analysis_task", lambda *_args: None)
+    monkeypatch.setattr(
+        analysis_task_routes,
+        "dispatch_job",
+        lambda *_args, **_kwargs: None,
+    )
 
     first = client.post(f"/api/videos/{video_id}/analysis-tasks")
     second = client.post(f"/api/videos/{video_id}/analysis-tasks")

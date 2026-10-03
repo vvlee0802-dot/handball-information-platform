@@ -1,5 +1,7 @@
 from pathlib import Path
+from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,13 +9,23 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
+    app_env: Literal["development", "test", "production"] = "development"
+    app_version: str = "1.0.0"
+    log_level: str = "INFO"
     postgres_db: str = "handball"
     postgres_user: str = "handball"
     postgres_password: str = "handball_dev_password"
+    postgres_host: str = "localhost"
     postgres_port: int = 5433
+    redis_url: str = "redis://localhost:6379/0"
+    task_queue_mode: Literal["background", "rq"] = "background"
+    task_queue_name: str = "handball"
     session_cookie_name: str = "handball_session"
     session_max_age_seconds: int = 60 * 60 * 24 * 7
     session_cookie_secure: bool = False
+    allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    allowed_hosts: str = "localhost,127.0.0.1,testserver"
+    force_https: bool = False
     video_upload_max_bytes: int = 10 * 1024**3
     video_upload_chunk_bytes: int = 8 * 1024**2
     video_upload_dir: Path = PROJECT_ROOT / "backend" / "uploads"
@@ -48,8 +60,37 @@ class Settings(BaseSettings):
         return (
             "postgresql+psycopg://"
             f"{self.postgres_user}:{self.postgres_password}"
-            f"@localhost:{self.postgres_port}/{self.postgres_db}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [value.strip() for value in self.allowed_origins.split(",") if value.strip()]
+
+    @property
+    def trusted_hosts(self) -> list[str]:
+        return [value.strip() for value in self.allowed_hosts.split(",") if value.strip()]
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        if self.app_env != "production":
+            return self
+        errors: list[str] = []
+        if self.postgres_password in {"", "handball_dev_password"}:
+            errors.append("POSTGRES_PASSWORD must be set to a non-default secret")
+        if not self.session_cookie_secure:
+            errors.append("SESSION_COOKIE_SECURE must be true")
+        if not self.force_https:
+            errors.append("FORCE_HTTPS must be true")
+        if not self.trusted_hosts or "*" in self.trusted_hosts:
+            errors.append("ALLOWED_HOSTS must contain explicit host names")
+        if not self.cors_origins or "*" in self.cors_origins:
+            errors.append("ALLOWED_ORIGINS must contain explicit HTTPS origins")
+        if any(not origin.startswith("https://") for origin in self.cors_origins):
+            errors.append("ALLOWED_ORIGINS must use HTTPS in production")
+        if errors:
+            raise ValueError("Invalid production configuration: " + "; ".join(errors))
+        return self
 
     @property
     def video_storage_path(self) -> Path:

@@ -44,7 +44,7 @@ const toolLabels: Record<string, string> = {
   get_match_overview: '读取比赛概况',
   get_match_events: '读取已确认事件',
   get_player_stats: '读取球员官方统计',
-  search_handball_knowledge: '检索手球知识库',
+  search_handball_knowledge: '检索手球资料',
   propose_update_match_status: '生成比赛状态修改计划',
 }
 
@@ -200,13 +200,12 @@ watch(
     <main class="page-container agent-page">
       <header class="page-heading">
         <div>
-          <p class="eyebrow">Epic 9 Match Analysis Agent</p>
-          <h1>比赛分析 Agent</h1>
-          <p class="page-description">用自然语言查询比赛、已确认事件、官方球员统计和知识库，并查看每一步工具调用。</p>
+          <h1>比赛分析</h1>
+          <p class="page-description">查询比赛、已确认事件、官方球员统计和资料库内容。</p>
         </div>
       </header>
 
-      <section v-if="!canUseAgent" class="panel empty-state">当前账号没有使用比赛分析 Agent 的权限。</section>
+      <section v-if="!canUseAgent" class="panel empty-state">当前账号没有使用比赛分析的权限。</section>
 
       <section v-else class="agent-layout">
         <aside class="panel session-sidebar">
@@ -214,7 +213,7 @@ watch(
             <label>
               新会话关联比赛
               <select v-model="newMatchId">
-                <option :value="null">暂不选择，让 Agent 询问</option>
+                <option :value="null">暂不选择比赛</option>
                 <option v-for="match in matches" :key="match.id" :value="match.id">{{ matchLabel(match) }}</option>
               </select>
             </label>
@@ -259,7 +258,7 @@ watch(
               </div>
               <article v-for="message in current.messages" :key="message.id" class="message-row" :class="message.role">
                 <div class="message-bubble">
-                  <span class="message-role">{{ message.role === 'user' ? '你' : 'Agent' }}</span>
+                  <span class="message-role">{{ message.role === 'user' ? '你' : '分析结果' }}</span>
                   <p>{{ message.content }}</p>
                   <details v-if="message.sources.length" class="source-details">
                     <summary>
@@ -323,7 +322,7 @@ watch(
                   </template>
                 </div>
               </article>
-              <div v-if="sending" class="message-row assistant"><div class="message-bubble thinking">Agent 正在选择并调用工具…</div></div>
+              <div v-if="sending" class="message-row assistant"><div class="message-bubble thinking">正在整理比赛数据…</div></div>
               <div ref="chatEnd" />
             </div>
 
@@ -345,31 +344,31 @@ watch(
 
 <style scoped>
 .agent-page { max-width: 1440px; }
-.agent-layout { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 18px; align-items: stretch; }
-.session-sidebar { display: flex; min-height: 720px; flex-direction: column; gap: 10px; padding: 16px; }
+.agent-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; align-items: stretch; }
+.session-sidebar { display: flex; min-height: 760px; flex-direction: column; gap: 8px; padding: 18px; }
 .new-session { display: grid; gap: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 .new-session label { display: grid; gap: 7px; color: var(--muted-strong); font-size: 12px; font-weight: 700; }
-.new-session select { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: white; }
+.new-session select { width: 100%; min-height: 46px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-soft); }
 .session-heading { display: flex; align-items: center; justify-content: space-between; margin: 5px 2px; }
 .session-heading span { color: var(--muted); font-size: 12px; }
-.session-item { display: grid; gap: 5px; width: 100%; padding: 12px; border: 1px solid transparent; border-radius: 11px; color: var(--ink); background: transparent; text-align: left; cursor: pointer; }
+.session-item { display: grid; gap: 5px; width: 100%; padding: 13px; border: 1px solid transparent; border-radius: 12px; color: var(--ink); background: transparent; text-align: left; cursor: pointer; }
 .session-item:hover,
 .session-item.active { border-color: var(--border); background: var(--primary-soft); }
 .session-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-item span,
 .session-item small { color: var(--muted); font-size: 12px; }
 .empty-state.compact { padding: 22px 8px; }
-.chat-panel { display: grid; min-height: 720px; grid-template-rows: auto minmax(0, 1fr) auto auto; padding: 0; overflow: hidden; }
-.chat-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.chat-panel { display: grid; min-height: 760px; grid-template-rows: auto minmax(0, 1fr) auto auto; padding: 0; overflow: hidden; }
+.chat-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--border); }
 .chat-header > div { display: grid; gap: 4px; }
 .chat-header span { color: var(--muted); font-size: 12px; }
-.message-list { min-height: 0; max-height: 660px; padding: 22px; overflow-y: auto; background: #f7f9fd; }
+.message-list { min-height: 0; max-height: 700px; padding: 24px; overflow-y: auto; background: white; }
 .message-row { display: flex; margin-bottom: 16px; }
 .message-row.user { justify-content: flex-end; }
-.message-bubble { width: min(760px, 86%); padding: 15px 17px; border: 1px solid var(--border); border-radius: 15px; background: white; box-shadow: 0 5px 18px rgba(31, 45, 80, .04); }
-.message-row.user .message-bubble { color: white; border-color: var(--primary); background: var(--primary); }
+.message-bubble { width: min(840px, 88%); padding: 18px; border: 1px solid #dbe5f1; border-radius: 16px; background: var(--surface-soft); }
+.message-row.user .message-bubble { padding: 14px 16px; border: 0; border-radius: 16px; color: white; background: var(--primary); }
 .message-role { display: block; margin-bottom: 7px; color: var(--primary-dark); font-size: 11px; font-weight: 800; text-transform: uppercase; }
-.message-row.user .message-role { color: rgba(255, 255, 255, .78); }
+.message-row.user .message-role { color: #d7e4ff; }
 .message-bubble > p { margin: 0; line-height: 1.72; white-space: pre-wrap; }
 .message-bubble.thinking { color: var(--muted-strong); font-size: 13px; }
 .source-details { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
@@ -379,7 +378,7 @@ watch(
 .source-details summary::after { margin-left: auto; color: var(--primary); content: '展开'; font-size: 11px; }
 .source-details[open] summary::after { content: '收起'; }
 .source-list { display: grid; gap: 7px; margin-top: 10px; }
-.source-list a { display: grid; gap: 3px; padding: 9px 10px; border-radius: 9px; color: var(--ink); background: var(--surface-soft); }
+.source-list a { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--ink); background: white; }
 .source-list a:hover { background: var(--primary-soft); }
 .source-list span { font-size: 12px; font-weight: 700; }
 .source-list small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
@@ -387,7 +386,7 @@ watch(
 .run-details summary { color: var(--primary-dark); cursor: pointer; font-size: 12px; font-weight: 750; }
 .run-meta { margin: 9px 0; color: var(--muted); font-size: 11px; }
 .tool-list { display: grid; gap: 7px; margin: 0 0 10px; padding: 0; list-style: none; }
-.tool-list li { padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-soft); }
+.tool-list li { padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-soft); }
 .tool-list li > div { display: flex; justify-content: space-between; gap: 10px; }
 .tool-list span { color: var(--muted); font-size: 11px; }
 .tool-list code { display: block; margin-top: 6px; overflow-wrap: anywhere; color: var(--muted-strong); font-size: 11px; }
@@ -395,7 +394,7 @@ watch(
 .tool-list .tool-completed { border-left: 3px solid var(--success); }
 .tool-list .tool-failed,
 .tool-list .tool-denied { border-left: 3px solid var(--danger); }
-.proposal-card { margin-top: 13px; padding: 13px; border: 1px solid #efd499; border-radius: 11px; background: #fff9eb; }
+.proposal-card { margin-top: 13px; padding: 13px; border: 1px solid #e3d3ac; border-radius: 7px; background: #fbf7ed; }
 .proposal-card > div:first-child { display: flex; justify-content: space-between; gap: 12px; }
 .proposal-card span { font-size: 11px; font-weight: 700; }
 .proposal-card p { margin: 8px 0; color: var(--ink); }
@@ -405,8 +404,8 @@ watch(
 .proposal-rejected,
 .proposal-failed { color: var(--danger); }
 .composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--border); background: white; }
-.composer textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--border); border-radius: 11px; outline: none; resize: none; }
-.composer textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.composer textarea { width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; outline: none; resize: none; }
+.composer textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
 .agent-error { margin: 0; padding: 10px 20px; color: var(--danger); background: var(--danger-soft); }
 .chat-empty { align-self: center; }
 .chat-empty p { margin-bottom: 0; }

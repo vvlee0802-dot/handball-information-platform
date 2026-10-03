@@ -3,6 +3,13 @@ import type { EventType } from '@/services/events'
 
 export type ClipExportStatus = 'queued' | 'processing' | 'completed' | 'failed'
 
+export interface ClipExportSegmentRecord {
+  event_id: number
+  source_timestamp_seconds: number
+  highlight_start_seconds: number
+  duration_seconds: number
+}
+
 export interface ClipExportRecord {
   id: number
   match_id: number
@@ -13,6 +20,7 @@ export interface ClipExportRecord {
   export_type: 'event_clips' | 'player_highlight'
   player_id: number | null
   event_types: EventType[]
+  segments: ClipExportSegmentRecord[]
   size_bytes: number | null
   duration_seconds: number | null
   failure_reason: string | null
