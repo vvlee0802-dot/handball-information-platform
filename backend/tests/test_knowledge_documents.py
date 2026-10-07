@@ -110,6 +110,9 @@ def test_question_retrieves_chunks_and_returns_traceable_citation(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(settings, "knowledge_document_dir", tmp_path)
+    monkeypatch.setattr(settings, "match_report_llm_base_url", "https://model.test/v1")
+    monkeypatch.setattr(settings, "match_report_llm_api_key", "test-key")
+    monkeypatch.setattr(settings, "match_report_llm_model", "test-knowledge-model")
     uploaded = client.post(
         "/api/knowledge/documents",
         content="七米球规则\n\n当防守行为破坏明显得分机会时，可以判罚七米球。".encode(),

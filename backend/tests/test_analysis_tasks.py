@@ -36,11 +36,12 @@ def test_analysis_task_returns_id_and_persists_progress_after_refresh(
     video_id = create_video(match_id, coach.id, storage_key=storage_key)
     monkeypatch.setattr(settings, "goal_model_dir", tmp_path / "missing-model")
 
-    def fake_scan(_path: Path, _duration: float | None, on_progress) -> None:
+    def fake_detector(_path: Path, _duration: float | None, on_progress) -> GoalDetectionResult:
         on_progress(45)
         on_progress(90)
+        return GoalDetectionResult(model_version=None, candidates=[])
 
-    monkeypatch.setattr(analysis_task_service, "scan_video_frames", fake_scan)
+    monkeypatch.setattr(analysis_task_service, "detect_goal_candidates", fake_detector)
 
     created = client.post(f"/api/videos/{video_id}/analysis-tasks")
     task_id = created.json()["id"]
