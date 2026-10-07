@@ -86,7 +86,7 @@ jobs:
       POSTGRES_PASSWORD: ci-only-password
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose config --quiet
+      - run: APP_ENV_FILE=.env.example docker compose --env-file .env.example config --quiet
       - run: APP_ENV_FILE=.env.production.example docker compose --env-file .env.production.example -f docker-compose.yml -f docker-compose.prod.yml config --quiet
       - run: docker build -f backend/Dockerfile -t handball-backend:ci .
       - run: docker build -f frontend/Dockerfile -t handball-frontend:ci .
