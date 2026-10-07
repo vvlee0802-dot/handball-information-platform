@@ -22,9 +22,7 @@ def main() -> None:
     if not manifest_path.is_file():
         raise SystemExit("Dataset manifest not found.")
     output_dir = (
-        args.output_dir.resolve()
-        if args.output_dir is not None
-        else manifest_path.parent / "clips"
+        args.output_dir.resolve() if args.output_dir is not None else manifest_path.parent / "clips"
     )
     samples = [json.loads(line) for line in manifest_path.read_text(encoding="utf-8").splitlines()]
     if args.limit is not None:
@@ -36,12 +34,7 @@ def main() -> None:
         source_path = settings.video_storage_path / sample["video_storage_key"]
         if not source_path.is_file():
             raise SystemExit(f"Source video not found: {source_path}")
-        clip_path = (
-            output_dir
-            / sample["split"]
-            / sample["label"]
-            / f"{sample['sample_id']}.mp4"
-        )
+        clip_path = output_dir / sample["split"] / sample["label"] / f"{sample['sample_id']}.mp4"
         clip_path.parent.mkdir(parents=True, exist_ok=True)
         if clip_path.is_file() and clip_path.stat().st_size > 0:
             skipped += 1

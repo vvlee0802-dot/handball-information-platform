@@ -6,9 +6,9 @@ Revises: f8a3d7c2e510
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "a9d4e7c1b260"
 down_revision: Union[str, Sequence[str], None] = "f8a3d7c2e510"
@@ -32,14 +32,28 @@ def upgrade() -> None:
         sa.Column("page_count", sa.Integer(), server_default="0", nullable=False),
         sa.Column("chunk_count", sa.Integer(), server_default="0", nullable=False),
         sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["owner_user_id"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("storage_key"),
     )
-    op.create_index("ix_knowledge_documents_owner_user_id", "knowledge_documents", ["owner_user_id"])
-    op.create_index("ix_knowledge_documents_checksum_sha256", "knowledge_documents", ["checksum_sha256"])
+    op.create_index(
+        "ix_knowledge_documents_owner_user_id", "knowledge_documents", ["owner_user_id"]
+    )
+    op.create_index(
+        "ix_knowledge_documents_checksum_sha256", "knowledge_documents", ["checksum_sha256"]
+    )
     op.create_index("ix_knowledge_documents_visibility", "knowledge_documents", ["visibility"])
     op.create_index("ix_knowledge_documents_status", "knowledge_documents", ["status"])
     op.create_table(
@@ -50,7 +64,12 @@ def upgrade() -> None:
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("page_number", sa.Integer(), nullable=True),
         sa.Column("section_title", sa.String(length=300), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["document_id"], ["knowledge_documents.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("document_id", "ordinal", name="uq_document_chunks_document_ordinal"),

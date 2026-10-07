@@ -1,9 +1,8 @@
+import re
 from dataclasses import dataclass
 from io import BytesIO
-import re
 
 import pdfplumber
-
 
 PARSER_VERSION = "knowledge-parser-v1"
 CHUNK_SIZE = 1000
@@ -29,7 +28,9 @@ def _section_title(text: str) -> str | None:
     return None
 
 
-def extract_document_pages(content: bytes, *, content_type: str, suffix: str) -> list[ExtractedPage]:
+def extract_document_pages(
+    content: bytes, *, content_type: str, suffix: str
+) -> list[ExtractedPage]:
     if suffix == ".pdf" or content_type == "application/pdf":
         if not content.startswith(b"%PDF-"):
             raise KnowledgeDocumentParseError("文件不是有效的 PDF。")
@@ -70,7 +71,9 @@ def _split_text(text: str) -> list[str]:
     chunks: list[str] = []
     current = ""
     for paragraph in paragraphs:
-        pieces = [paragraph[index : index + CHUNK_SIZE] for index in range(0, len(paragraph), CHUNK_SIZE)]
+        pieces = [
+            paragraph[index : index + CHUNK_SIZE] for index in range(0, len(paragraph), CHUNK_SIZE)
+        ]
         for piece in pieces:
             candidate = f"{current}\n\n{piece}".strip() if current else piece
             if len(candidate) <= CHUNK_SIZE:

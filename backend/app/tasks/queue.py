@@ -7,7 +7,6 @@ from sqlalchemy.engine import Connection, Engine
 from app.core.config import settings
 from app.tasks import jobs
 
-
 JOB_FUNCTIONS: dict[str, Callable[..., None]] = {
     "video_processing": jobs.process_video_job,
     "clip_export": jobs.process_clip_export_job,

@@ -1,8 +1,8 @@
+import re
+import shutil
 from hashlib import sha256
 from math import ceil
 from pathlib import Path
-import re
-import shutil
 from typing import Annotated
 from urllib.parse import unquote
 from uuid import uuid4
@@ -25,7 +25,6 @@ from app.schemas.video_upload import (
     VideoUploadSessionRead,
 )
 from app.tasks.queue import dispatch_job
-
 
 router = APIRouter(tags=["videos"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -273,7 +272,9 @@ def complete_video_upload(
 
     parts = video_uploads.list_parts(db, upload_id)
     received_numbers = {part.part_number for part in parts}
-    missing = [number for number in range(1, session.total_parts + 1) if number not in received_numbers]
+    missing = [
+        number for number in range(1, session.total_parts + 1) if number not in received_numbers
+    ]
     if missing:
         raise HTTPException(status_code=409, detail=f"Upload is missing {len(missing)} part(s)")
 

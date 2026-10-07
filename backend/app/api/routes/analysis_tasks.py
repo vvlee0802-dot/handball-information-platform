@@ -9,10 +9,9 @@ from app.repositories import analysis_prediction as analysis_predictions
 from app.repositories import analysis_task as analysis_tasks
 from app.repositories import match as matches
 from app.repositories import video as videos
-from app.schemas.analysis_task import AnalysisTaskRead
 from app.schemas.analysis_prediction import AnalysisPredictionRead, AnalysisPredictionReview
+from app.schemas.analysis_task import AnalysisTaskRead
 from app.tasks.queue import dispatch_job
-
 
 router = APIRouter(tags=["analysis-tasks"])
 DatabaseSession = Annotated[Session, Depends(get_db)]

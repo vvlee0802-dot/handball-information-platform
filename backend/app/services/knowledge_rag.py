@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
 import json
 import math
+from datetime import datetime, timezone
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
@@ -84,8 +84,7 @@ def rank_chunks(
     top_k: int,
 ) -> list[tuple[DocumentChunk, float]]:
     ranked = [
-        (chunk, cosine_similarity(query_embedding, chunk.embedding or []))
-        for chunk in chunks
+        (chunk, cosine_similarity(query_embedding, chunk.embedding or [])) for chunk in chunks
     ]
     ranked.sort(key=lambda item: item[1], reverse=True)
     return ranked[:top_k]

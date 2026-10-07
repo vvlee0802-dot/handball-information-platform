@@ -29,11 +29,7 @@ def list_match_events(
         statement = statement.where(Event.player_id == player_id)
     if status is not None:
         statement = statement.where(Event.status == status)
-    return list(
-        db.scalars(
-            statement.order_by(Event.timestamp_seconds, Event.id)
-        )
-    )
+    return list(db.scalars(statement.order_by(Event.timestamp_seconds, Event.id)))
 
 
 def create_event(

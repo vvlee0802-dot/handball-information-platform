@@ -6,9 +6,9 @@ Revises: b2f7c9d4e810
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "c5e8a1d7f940"
 down_revision: Union[str, Sequence[str], None] = "b2f7c9d4e810"

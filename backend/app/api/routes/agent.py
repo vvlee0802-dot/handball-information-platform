@@ -28,7 +28,6 @@ from app.schemas.agent import (
 )
 from app.services.match_agent import run_match_agent
 
-
 router = APIRouter(prefix="/api/agent", tags=["match analysis agent"])
 
 
@@ -212,9 +211,7 @@ def delete_agent_session(
         .values(proposal_id=None)
     )
     db.execute(delete(AgentToolCall).where(AgentToolCall.run_id.in_(run_ids)))
-    db.execute(
-        delete(AgentActionProposal).where(AgentActionProposal.session_id == session.id)
-    )
+    db.execute(delete(AgentActionProposal).where(AgentActionProposal.session_id == session.id))
     db.execute(delete(AgentRun).where(AgentRun.session_id == session.id))
     db.execute(delete(ChatMessage).where(ChatMessage.session_id == session.id))
     db.delete(session)

@@ -1,27 +1,27 @@
+import re
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
-import re
 from typing import Annotated
 from urllib.parse import unquote
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import ManageMatchReportUser
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.match import Match
 from app.models.event import Event
 from app.models.event_player_assignment_audit import EventPlayerAssignmentAudit
-from app.models.player import Player
+from app.models.match import Match
 from app.models.match_report import (
     MatchReportImport,
     OfficialPlayerMatchStat,
     OfficialTeamMatchStat,
 )
+from app.models.player import Player
 from app.models.team import Team
 from app.repositories import match as matches
 from app.repositories import match_report as reports
@@ -38,7 +38,6 @@ from app.services.match_report_parser import (
     MatchReportParseError,
     parse_official_match_report_pdf,
 )
-
 
 router = APIRouter(tags=["match-reports"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -67,9 +66,7 @@ def _link_unassigned_verified_goals(
         }
         if team is not None:
             aliases.update({team.name, team.short_name, team.country})
-        aliases_by_team[team_id] = {
-            _normalize(alias) for alias in aliases if _normalize(alias)
-        }
+        aliases_by_team[team_id] = {_normalize(alias) for alias in aliases if _normalize(alias)}
 
     linked_count = 0
     unassigned_goals = db.scalars(
@@ -142,7 +139,9 @@ def _team_matches_report(team: Team, report_team: dict) -> bool:
         _normalize(report_team["code"]),
         *{_normalize(alias) for alias in aliases},
     }
-    return bool({value for value in candidates if value} & {value for value in report_values if value})
+    return bool(
+        {value for value in candidates if value} & {value for value in report_values if value}
+    )
 
 
 def _suggest_mapping(
@@ -352,9 +351,7 @@ def confirm_match_report(
             )
         )
         db.execute(
-            delete(OfficialTeamMatchStat).where(
-                OfficialTeamMatchStat.report_import_id == report.id
-            )
+            delete(OfficialTeamMatchStat).where(OfficialTeamMatchStat.report_import_id == report.id)
         )
 
     players_by_team_number = {}

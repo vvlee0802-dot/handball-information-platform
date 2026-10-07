@@ -1,8 +1,8 @@
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
-from app.models.player import Player
 from app.models.event import Event
+from app.models.player import Player
 from app.schemas.player import PlayerCreate, PlayerUpdate
 
 

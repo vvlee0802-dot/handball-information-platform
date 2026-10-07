@@ -5,7 +5,6 @@ from typing import Any
 
 from app.core.config import settings
 
-
 STANDARD_LOG_RECORD_FIELDS = set(logging.makeLogRecord({}).__dict__)
 
 
@@ -32,4 +31,3 @@ def configure_logging() -> None:
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(settings.log_level.upper())
-

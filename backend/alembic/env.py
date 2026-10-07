@@ -1,8 +1,7 @@
 from logging.config import fileConfig
 
-from alembic import context
-
 import app.models  # noqa: F401
+from alembic import context
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
@@ -60,9 +59,7 @@ def run_migrations_online() -> None:
 
     """
     with engine.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

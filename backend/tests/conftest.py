@@ -7,13 +7,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401
+from app.core.authorization import UserRole
+from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from app.core.authorization import UserRole
-from app.core.security import hash_password
 from app.models.user import User
-
 
 test_engine = create_engine(
     "sqlite+pysqlite:///:memory:",

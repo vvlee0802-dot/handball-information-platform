@@ -6,9 +6,9 @@ Revises: d7a4f2c8e130
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "e9b6c3a2f510"
 down_revision: Union[str, Sequence[str], None] = "d7a4f2c8e130"
@@ -23,8 +23,18 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column("match_id", sa.Integer(), nullable=True),
         sa.Column("title", sa.String(length=120), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["match_id"], ["matches.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -38,7 +48,12 @@ def upgrade() -> None:
         sa.Column("role", sa.String(length=20), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("sources", sa.JSON(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["session_id"], ["chat_sessions.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -58,9 +73,16 @@ def upgrade() -> None:
         sa.Column("token_usage", sa.JSON(), nullable=False),
         sa.Column("error_type", sa.String(length=80), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["assistant_message_id"], ["chat_messages.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["assistant_message_id"], ["chat_messages.id"], ondelete="SET NULL"
+        ),
         sa.ForeignKeyConstraint(["retry_of_run_id"], ["agent_runs.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["session_id"], ["chat_sessions.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_message_id"], ["chat_messages.id"], ondelete="SET NULL"),
@@ -80,7 +102,12 @@ def upgrade() -> None:
         sa.Column("result_summary", sa.JSON(), nullable=True),
         sa.Column("retryable", sa.Boolean(), nullable=False),
         sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["run_id"], ["agent_runs.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -98,7 +125,12 @@ def upgrade() -> None:
         sa.Column("requested_by_user_id", sa.Integer(), nullable=False),
         sa.Column("confirmed_by_user_id", sa.Integer(), nullable=True),
         sa.Column("result", sa.JSON(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.Column("executed_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["confirmed_by_user_id"], ["users.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["match_id"], ["matches.id"], ondelete="SET NULL"),
@@ -108,7 +140,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_agent_action_proposals_run_id", "agent_action_proposals", ["run_id"])
-    op.create_index("ix_agent_action_proposals_session_id", "agent_action_proposals", ["session_id"])
+    op.create_index(
+        "ix_agent_action_proposals_session_id", "agent_action_proposals", ["session_id"]
+    )
     op.create_index("ix_agent_action_proposals_match_id", "agent_action_proposals", ["match_id"])
     op.create_table(
         "agent_action_audits",
@@ -119,9 +153,16 @@ def upgrade() -> None:
         sa.Column("executed_by_user_id", sa.Integer(), nullable=False),
         sa.Column("before_data", sa.JSON(), nullable=False),
         sa.Column("after_data", sa.JSON(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["executed_by_user_id"], ["users.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["proposal_id"], ["agent_action_proposals.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["proposal_id"], ["agent_action_proposals.id"], ondelete="SET NULL"
+        ),
         sa.ForeignKeyConstraint(["session_id"], ["chat_sessions.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )

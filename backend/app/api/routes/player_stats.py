@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import (
@@ -9,10 +10,10 @@ from app.api.dependencies.auth import (
     ViewAuthorizedVideoUser,
 )
 from app.db.session import get_db
+from app.models.event import Event
 from app.repositories import match as matches
 from app.repositories import player as players
 from app.repositories import player_stats
-from app.models.event import Event
 from app.schemas.event import EventRead
 from app.schemas.player_stats import (
     MatchPlayerStatsRead,
@@ -21,8 +22,6 @@ from app.schemas.player_stats import (
     PlayerAssignmentBatchUpdate,
     PlayerStatsMetric,
 )
-from sqlalchemy import select
-
 
 router = APIRouter(prefix="/api/matches/{match_id}/player-stats", tags=["player-stats"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -90,7 +89,9 @@ def update_event_player_assignments(
         )
     )
     if len(selected_events) != len(payload.event_ids):
-        raise HTTPException(status_code=422, detail="All events must be active and belong to this match")
+        raise HTTPException(
+            status_code=422, detail="All events must be active and belong to this match"
+        )
     ordered_events = sorted(selected_events, key=lambda event: payload.event_ids.index(event.id))
     affected_count, updated_events = player_stats.reassign_events_to_player(
         db,

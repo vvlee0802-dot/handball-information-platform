@@ -9,7 +9,6 @@ from app.repositories import player as player_repository
 from app.repositories import team as team_repository
 from app.schemas.player import PlayerCreate, PlayerRead, PlayerUpdate
 
-
 router = APIRouter(prefix="/api/players", tags=["players"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 

@@ -12,7 +12,6 @@ from app.schemas.competition import (
     CompetitionUpdate,
 )
 
-
 router = APIRouter(prefix="/api/competitions", tags=["competitions"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 

@@ -2,8 +2,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.core.config import settings
 from app.core.authorization import UserRole
+from app.core.config import settings
 from app.core.security import hash_password
 from app.main import app
 from app.models.user import User
@@ -147,7 +147,9 @@ def test_question_retrieves_chunks_and_returns_traceable_citation(
                 ]
             }
 
-    monkeypatch.setattr("app.services.knowledge_rag.httpx.post", lambda *_args, **_kwargs: FakeResponse())
+    monkeypatch.setattr(
+        "app.services.knowledge_rag.httpx.post", lambda *_args, **_kwargs: FakeResponse()
+    )
     response = client.post("/api/knowledge/ask", json={"question": "什么时候判罚七米球？"})
     assert response.status_code == 200, response.text
     answer = response.json()

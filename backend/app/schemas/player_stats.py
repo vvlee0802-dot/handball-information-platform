@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 
 from app.schemas.event import EventRead
 
-
 PlayerStatsMetric = Literal["goals", "shots", "saves", "turnovers", "fast_breaks"]
 
 

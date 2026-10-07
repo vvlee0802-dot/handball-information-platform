@@ -3,7 +3,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-
 PredictionOutcome = Literal["true_positive", "false_positive", "false_negative"]
 TrainingDecision = Literal["pending", "include", "exclude"]
 

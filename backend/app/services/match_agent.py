@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
 import json
+from datetime import datetime, timezone
 from time import perf_counter
 from uuid import uuid4
 
@@ -89,10 +89,7 @@ def _history(db: Session, session_id: str) -> list[dict]:
             .limit(max(2, settings.match_agent_history_messages))
         )
     )
-    return [
-        {"role": message.role, "content": message.content}
-        for message in reversed(records)
-    ]
+    return [{"role": message.role, "content": message.content} for message in reversed(records)]
 
 
 def _merge_usage(total: dict, current: dict) -> dict:
@@ -127,7 +124,10 @@ def run_match_agent(
     sources: dict[str, AgentSource] = {}
     usage: dict = {}
     sequence = 0
-    messages = [{"role": "system", "content": _system_prompt(db, session)}, *_history(db, session.id)]
+    messages = [
+        {"role": "system", "content": _system_prompt(db, session)},
+        *_history(db, session.id),
+    ]
     tools = available_tool_schemas(user)
 
     try:
@@ -205,7 +205,9 @@ def run_match_agent(
                     record.result_summary = summarize_tool_result(payload, tool_sources)
                     tool_result = {"ok": True, "data": payload}
                 except AgentToolError as exc:
-                    record.status = "denied" if isinstance(exc, AgentToolPermissionError) else "failed"
+                    record.status = (
+                        "denied" if isinstance(exc, AgentToolPermissionError) else "failed"
+                    )
                     record.retryable = bool(getattr(exc, "retryable", False))
                     record.error_message = str(exc)[:1000]
                     tool_result = {

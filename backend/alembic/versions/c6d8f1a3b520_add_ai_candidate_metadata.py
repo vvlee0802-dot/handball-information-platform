@@ -6,9 +6,9 @@ Revises: a4f9c2e8d710
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "c6d8f1a3b520"
 down_revision: Union[str, Sequence[str], None] = "a4f9c2e8d710"
@@ -17,9 +17,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "analysis_tasks", sa.Column("model_version", sa.String(120), nullable=True)
-    )
+    op.add_column("analysis_tasks", sa.Column("model_version", sa.String(120), nullable=True))
     op.add_column(
         "analysis_tasks",
         sa.Column("candidate_count", sa.Integer(), server_default="0", nullable=False),

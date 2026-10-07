@@ -1,6 +1,6 @@
 import argparse
-from datetime import UTC, datetime
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.services.goal_training import binary_metrics, manifest_sha256
@@ -73,12 +73,9 @@ def main() -> None:
         "evaluated_at": datetime.now(UTC).isoformat(),
         "manifest": str(manifest_path),
         "manifest_sha256": manifest_sha256(manifest_path),
-        "validation_sample_count": sum(
-            split == "validation" for split in payload["splits"]
-        ),
+        "validation_sample_count": sum(split == "validation" for split in payload["splits"]),
         "models": [
-            evaluate_model(torch, payload, model_dir.resolve())
-            for model_dir in args.model_dir
+            evaluate_model(torch, payload, model_dir.resolve()) for model_dir in args.model_dir
         ],
     }
     rendered = json.dumps(results, ensure_ascii=False, indent=2) + "\n"

@@ -14,7 +14,6 @@ from app.db.session import get_db
 from app.repositories import auth as auth_repository
 from app.schemas.auth import LoginRequest, UserRead, to_user_read
 
-
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 SessionCookie = Annotated[

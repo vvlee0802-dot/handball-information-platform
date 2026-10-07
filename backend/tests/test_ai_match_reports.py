@@ -94,9 +94,7 @@ def test_generated_report_saves_model_prompt_snapshot_and_evidence(
     assert created.json()["prompt_version"] == "match-report-v1-test"
     assert created.json()["generation_focus"] == "team_comparison"
     assert created.json()["detail_level"] == "detailed"
-    assert created.json()["report"]["sections"][0]["evidence_ids"] == [
-        "match.final_score"
-    ]
+    assert created.json()["report"]["sections"][0]["evidence_ids"] == ["match.final_score"]
     assert latest.status_code == 200
     assert latest.json()["id"] == created.json()["id"]
     with TestingSessionLocal() as db:
@@ -202,9 +200,7 @@ def test_fact_evaluation_detects_unsupported_numbers_and_compares_versions(
         f"/api/matches/{match_id}/ai-reports",
         json={"focus": "full_match", "detail_level": "concise"},
     ).json()
-    first_evaluation = client.post(
-        f"/api/matches/{match_id}/ai-reports/{first['id']}/evaluations"
-    )
+    first_evaluation = client.post(f"/api/matches/{match_id}/ai-reports/{first['id']}/evaluations")
     second = client.post(
         f"/api/matches/{match_id}/ai-reports",
         json={"focus": "full_match", "detail_level": "concise"},

@@ -17,9 +17,7 @@ def replace_evaluation_predictions(
     predictions: list[GoalCandidatePrediction],
     evaluation: GoalEvaluation,
 ) -> list[AnalysisPrediction]:
-    db.execute(
-        delete(AnalysisPrediction).where(AnalysisPrediction.analysis_task_id == task_id)
-    )
+    db.execute(delete(AnalysisPrediction).where(AnalysisPrediction.analysis_task_id == task_id))
     items: list[AnalysisPrediction] = []
     for match in evaluation.matches:
         event = ground_truth_events[match.ground_truth_index]

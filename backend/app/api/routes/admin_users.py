@@ -7,11 +7,10 @@ from app.api.dependencies.auth import ManageUsersUser
 from app.core.authorization import UserRole, get_effective_permissions
 from app.core.security import normalize_email
 from app.db.session import get_db
+from app.models.team import Team
 from app.repositories import auth as auth_repository
 from app.repositories import user_admin as user_repository
 from app.schemas.user_admin import AdminUserCreate, AdminUserRead, AdminUserUpdate
-from app.models.team import Team
-
 
 router = APIRouter(prefix="/api/admin/users", tags=["user administration"])
 DatabaseSession = Annotated[Session, Depends(get_db)]

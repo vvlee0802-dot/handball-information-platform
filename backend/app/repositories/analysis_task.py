@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.models.analysis_task import AnalysisTask
 
-
 ACTIVE_STATUSES = ("queued", "running")
 
 

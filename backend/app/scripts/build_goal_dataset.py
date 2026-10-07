@@ -1,27 +1,27 @@
 import argparse
+import json
 from collections import Counter
 from datetime import UTC, datetime
-import json
 from pathlib import Path
 
 from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.models.event import Event
 from app.models.analysis_prediction import AnalysisPrediction
 from app.models.analysis_task import AnalysisTask
+from app.models.event import Event
 from app.models.match import Match
 from app.models.video import Video
 from app.services.goal_dataset import (
     EVENT_LEAD_SECONDS,
     EVENT_TRAIL_SECONDS,
-    GoalAnnotation,
-    GoalDatasetError,
-    HardNegativePrediction,
     NEGATIVE_MAX_DISTANCE_SECONDS,
     NEGATIVE_MIN_DISTANCE_SECONDS,
     VALIDATION_FRACTION,
+    GoalAnnotation,
+    GoalDatasetError,
+    HardNegativePrediction,
     build_goal_dataset_samples,
     build_hard_negative_samples,
 )
@@ -172,8 +172,7 @@ def main() -> None:
         },
         "validation_fraction": VALIDATION_FRACTION,
         "distribution": {
-            f"{split}_{label}": count
-            for (split, label), count in sorted(distribution.items())
+            f"{split}_{label}": count for (split, label), count in sorted(distribution.items())
         },
     }
     metadata_path = output_dir / "metadata.json"

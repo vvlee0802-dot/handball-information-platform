@@ -8,7 +8,6 @@ from app.db.session import get_db
 from app.repositories import team as team_repository
 from app.schemas.team import TeamCreate, TeamRead, TeamUpdate
 
-
 router = APIRouter(prefix="/api/teams", tags=["teams"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 

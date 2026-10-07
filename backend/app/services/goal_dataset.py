@@ -1,6 +1,5 @@
-from dataclasses import asdict, dataclass
 import math
-
+from dataclasses import asdict, dataclass
 
 EVENT_LEAD_SECONDS = 8.0
 EVENT_TRAIL_SECONDS = 5.0
@@ -60,10 +59,10 @@ def _select_evenly(candidates: list[float], count: int) -> list[float]:
     if count == 0:
         return []
     if len(candidates) < count:
-        raise GoalDatasetError(
-            f"负样本候选不足：需要 {count} 个，实际只有 {len(candidates)} 个。"
-        )
-    return [candidates[math.floor((index + 0.5) * len(candidates) / count)] for index in range(count)]
+        raise GoalDatasetError(f"负样本候选不足：需要 {count} 个，实际只有 {len(candidates)} 个。")
+    return [
+        candidates[math.floor((index + 0.5) * len(candidates) / count)] for index in range(count)
+    ]
 
 
 def build_goal_dataset_samples(
@@ -86,10 +85,7 @@ def build_goal_dataset_samples(
     timestamps = [annotation.timestamp_seconds for annotation in ordered_annotations]
     if any(timestamp < 0 or timestamp > duration_seconds for timestamp in timestamps):
         raise GoalDatasetError("存在超出视频范围的进球时间。")
-    if any(
-        current - previous < 3
-        for previous, current in zip(timestamps, timestamps[1:])
-    ):
+    if any(current - previous < 3 for previous, current in zip(timestamps, timestamps[1:])):
         raise GoalDatasetError("存在三秒内的重复进球标注，请先检查事件时间。")
 
     positive_samples: list[GoalDatasetSample] = []
@@ -115,11 +111,7 @@ def build_goal_dataset_samples(
     center = EVENT_LEAD_SECONDS
     while center <= duration_seconds - EVENT_TRAIL_SECONDS:
         nearest_goal_distance = min(abs(center - goal_time) for goal_time in timestamps)
-        if (
-            NEGATIVE_MIN_DISTANCE_SECONDS
-            <= nearest_goal_distance
-            <= NEGATIVE_MAX_DISTANCE_SECONDS
-        ):
+        if NEGATIVE_MIN_DISTANCE_SECONDS <= nearest_goal_distance <= NEGATIVE_MAX_DISTANCE_SECONDS:
             candidate_centers[_split_for_timestamp(center, duration_seconds)].append(center)
         center += NEGATIVE_CANDIDATE_STEP_SECONDS
 

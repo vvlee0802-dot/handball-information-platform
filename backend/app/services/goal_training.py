@@ -1,8 +1,7 @@
-from dataclasses import dataclass
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
-
 
 LABELS = {0: "non_goal", 1: "goal"}
 
@@ -79,8 +78,12 @@ def binary_metrics(labels: list[int], predictions: list[int]) -> dict[str, float
     false_positive = sum(y == 0 and p == 1 for y, p in zip(labels, predictions))
     false_negative = sum(y == 1 and p == 0 for y, p in zip(labels, predictions))
     accuracy = (true_positive + true_negative) / len(labels)
-    precision = true_positive / (true_positive + false_positive) if true_positive + false_positive else 0.0
-    recall = true_positive / (true_positive + false_negative) if true_positive + false_negative else 0.0
+    precision = (
+        true_positive / (true_positive + false_positive) if true_positive + false_positive else 0.0
+    )
+    recall = (
+        true_positive / (true_positive + false_negative) if true_positive + false_negative else 0.0
+    )
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     return {
         "accuracy": accuracy,

@@ -25,8 +25,7 @@ def create_user(
             role=role.value,
         )
         user.permission_grants = [
-            UserPermission(permission=permission.value)
-            for permission in extra_permissions
+            UserPermission(permission=permission.value) for permission in extra_permissions
         ]
         session.add(user)
         session.commit()

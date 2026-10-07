@@ -11,7 +11,6 @@ from app.repositories import team as teams
 from app.repositories import venue as venues
 from app.schemas.match import MatchCreate, MatchRead, MatchUpdate
 
-
 router = APIRouter(prefix="/api/matches", tags=["matches"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
@@ -46,7 +45,8 @@ def create_match(
 @router.get("/{match_id}", response_model=MatchRead)
 def get_match(match_id: int, db: DatabaseSession) -> MatchRead:
     match = matches.get_match(db, match_id)
-    if match is None: raise HTTPException(status_code=404, detail="Match not found")
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found")
     return match
 
 
@@ -58,15 +58,23 @@ def update_match(
     _current_user: ManageCompetitionDataUser,
 ) -> MatchRead:
     match = matches.get_match(db, match_id)
-    if match is None: raise HTTPException(status_code=404, detail="Match not found")
-    merged = MatchCreate.model_validate({
-        "competition_id": match.competition_id, "home_team_id": match.home_team_id,
-        "away_team_id": match.away_team_id, "venue_id": match.venue_id,
-        "match_date": match.match_date, "start_time": match.start_time,
-        "stage": match.stage, "status": match.status,
-        "home_score": match.home_score, "away_score": match.away_score,
-        **data.model_dump(exclude_unset=True),
-    })
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found")
+    merged = MatchCreate.model_validate(
+        {
+            "competition_id": match.competition_id,
+            "home_team_id": match.home_team_id,
+            "away_team_id": match.away_team_id,
+            "venue_id": match.venue_id,
+            "match_date": match.match_date,
+            "start_time": match.start_time,
+            "stage": match.stage,
+            "status": match.status,
+            "home_score": match.home_score,
+            "away_score": match.away_score,
+            **data.model_dump(exclude_unset=True),
+        }
+    )
     validate_references(db, merged)
     return matches.update_match(db, match, data)
 

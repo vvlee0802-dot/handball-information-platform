@@ -13,7 +13,6 @@ from app.models.video_upload import VideoUploadPart, VideoUploadSession
 from tests.conftest import TestingSessionLocal
 from tests.test_matches import setup_references
 
-
 VALID_MP4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"video-data"
 
 
@@ -263,9 +262,7 @@ def test_chunk_retry_is_idempotent_and_complete_assembles_one_video(
 
     with TestingSessionLocal() as db:
         part_count = db.scalar(
-            select(func.count(VideoUploadPart.id)).where(
-                VideoUploadPart.upload_id == session["id"]
-            )
+            select(func.count(VideoUploadPart.id)).where(VideoUploadPart.upload_id == session["id"])
         )
         assert part_count == len(chunks)
 
@@ -283,11 +280,14 @@ def test_chunk_retry_is_idempotent_and_complete_assembles_one_video(
         assert upload_session is not None
         assert upload_session.status == "completed"
         assert upload_session.video_id == completed.json()["id"]
-        assert db.scalar(
-            select(func.count(VideoUploadPart.id)).where(
-                VideoUploadPart.upload_id == session["id"]
+        assert (
+            db.scalar(
+                select(func.count(VideoUploadPart.id)).where(
+                    VideoUploadPart.upload_id == session["id"]
+                )
             )
-        ) == 0
+            == 0
+        )
 
 
 def test_cancelling_upload_marks_session_and_cleans_temporary_parts(
@@ -312,11 +312,14 @@ def test_cancelling_upload_marks_session_and_cleans_temporary_parts(
         upload_session = db.get(VideoUploadSession, session["id"])
         assert upload_session is not None
         assert upload_session.status == "cancelled"
-        assert db.scalar(
-            select(func.count(VideoUploadPart.id)).where(
-                VideoUploadPart.upload_id == session["id"]
+        assert (
+            db.scalar(
+                select(func.count(VideoUploadPart.id)).where(
+                    VideoUploadPart.upload_id == session["id"]
+                )
             )
-        ) == 0
+            == 0
+        )
 
 
 def test_multiple_videos_keep_independent_metadata_and_deletion_is_soft(

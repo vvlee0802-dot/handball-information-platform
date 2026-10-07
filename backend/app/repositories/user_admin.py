@@ -23,9 +23,7 @@ def list_users(db: Session) -> list[User]:
 
 def get_user(db: Session, user_id: int) -> User | None:
     return db.scalar(
-        select(User)
-        .options(selectinload(User.permission_grants))
-        .where(User.id == user_id)
+        select(User).options(selectinload(User.permission_grants)).where(User.id == user_id)
     )
 
 

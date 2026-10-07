@@ -1,33 +1,34 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.api.routes.auth import router as auth_router
-from app.api.routes.analysis_tasks import router as analysis_tasks_router
-from app.api.routes.ai_match_reports import router as ai_match_reports_router
-from app.api.routes.agent import router as agent_router
-from app.api.routes.knowledge import router as knowledge_router
-from app.api.routes.knowledge_qa import router as knowledge_qa_router
-from app.api.routes.knowledge_evaluations import router as knowledge_evaluations_router
-from app.api.routes.clip_exports import router as clip_exports_router
 from app.api.routes.admin_users import router as admin_users_router
+from app.api.routes.agent import router as agent_router
+from app.api.routes.ai_match_reports import router as ai_match_reports_router
+from app.api.routes.analysis_tasks import router as analysis_tasks_router
+from app.api.routes.auth import router as auth_router
+from app.api.routes.clip_exports import router as clip_exports_router
 from app.api.routes.competitions import router as competitions_router
 from app.api.routes.events import router as events_router
-from app.api.routes.matches import router as matches_router
+from app.api.routes.knowledge import router as knowledge_router
+from app.api.routes.knowledge_evaluations import router as knowledge_evaluations_router
+from app.api.routes.knowledge_qa import router as knowledge_qa_router
 from app.api.routes.match_reports import router as match_reports_router
-from app.api.routes.players import router as players_router
+from app.api.routes.matches import router as matches_router
 from app.api.routes.player_stats import router as player_stats_router
+from app.api.routes.players import router as players_router
 from app.api.routes.teams import router as teams_router
 from app.api.routes.venues import router as venues_router
 from app.api.routes.videos import router as videos_router
-from app.db.session import engine
 from app.core.config import settings
 from app.core.logging import configure_logging
+from app.core.metrics import metrics_middleware, refresh_operational_metrics
 from app.core.observability import request_context_middleware
-
+from app.db.session import engine
 
 configure_logging()
 
@@ -37,13 +38,21 @@ app = FastAPI(
 )
 
 app.middleware("http")(request_context_middleware)
+app.middleware("http")(metrics_middleware)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Accept", "Content-Type", "X-Request-ID", "X-Original-Filename", "X-Video-Type", "X-Video-Duration-Seconds"],
+    allow_headers=[
+        "Accept",
+        "Content-Type",
+        "X-Request-ID",
+        "X-Original-Filename",
+        "X-Video-Type",
+        "X-Video-Duration-Seconds",
+    ],
 )
 if settings.force_https:
     app.add_middleware(HTTPSRedirectMiddleware)
@@ -121,3 +130,12 @@ def health_check() -> dict[str, str]:
         "database": "connected",
         "task_queue": queue_status,
     }
+
+
+@app.get("/internal/metrics", include_in_schema=False)
+def prometheus_metrics() -> Response:
+    refresh_operational_metrics()
+    return Response(
+        content=generate_latest(),
+        headers={"Content-Type": CONTENT_TYPE_LATEST},
+    )

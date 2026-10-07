@@ -3,7 +3,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 KnowledgeVisibility = Literal["platform", "team_private", "owner_private"]
 KnowledgeDocumentStatus = Literal["processing", "ready", "failed"]
 

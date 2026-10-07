@@ -59,10 +59,6 @@ def list_event_ids(db: Session, clip_export_id: int) -> list[int]:
 
 
 def delete_clip_export(db: Session, clip_export: ClipExport) -> None:
-    db.execute(
-        delete(ClipExportEvent).where(
-            ClipExportEvent.clip_export_id == clip_export.id
-        )
-    )
+    db.execute(delete(ClipExportEvent).where(ClipExportEvent.clip_export_id == clip_export.id))
     db.delete(clip_export)
     db.commit()

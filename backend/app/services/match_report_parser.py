@@ -1,9 +1,8 @@
-from io import BytesIO
 import re
+from io import BytesIO
 from typing import Any
 
 import pdfplumber
-
 
 PARSER_NAME = "paris-2024-ihf-match-report-v1"
 

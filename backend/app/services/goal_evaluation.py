@@ -2,7 +2,6 @@ from dataclasses import dataclass
 
 from app.services.goal_detection import GoalCandidatePrediction
 
-
 MATCH_TOLERANCE_SECONDS = 8.0
 
 
@@ -86,8 +85,6 @@ def evaluate_goal_predictions(
             index for index in range(len(predictions)) if index not in matched_predictions
         ),
         false_negative_ground_truth_indices=tuple(
-            index
-            for index in range(len(ground_truth_timestamps))
-            if index not in matched_truth
+            index for index in range(len(ground_truth_timestamps)) if index not in matched_truth
         ),
     )

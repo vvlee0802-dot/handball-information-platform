@@ -27,7 +27,6 @@ from app.services.clip_export import (
 )
 from app.tasks.queue import dispatch_job
 
-
 router = APIRouter(tags=["clip-exports"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
@@ -35,13 +34,11 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 def serialize_clip_export(db: Session, clip_export) -> ClipExportRead:
     event_ids = clip_exports.list_event_ids(db, clip_export.id)
     events_by_id = {
-        event.id: event
-        for event in db.scalars(select(Event).where(Event.id.in_(event_ids)))
+        event.id: event for event in db.scalars(select(Event).where(Event.id.in_(event_ids)))
     }
     video_ids = {event.video_id for event in events_by_id.values()}
     videos_by_id = {
-        video.id: video
-        for video in db.scalars(select(Video).where(Video.id.in_(video_ids)))
+        video.id: video for video in db.scalars(select(Video).where(Video.id.in_(video_ids)))
     }
     segments: list[ClipExportSegmentRead] = []
     highlight_offset = 0.0
@@ -139,7 +136,8 @@ def create_clip_export(
         raise HTTPException(status_code=409, detail="All event videos must be available")
 
     ordered_event_ids = [
-        event.id for event in sorted(selected_events, key=lambda item: (item.timestamp_seconds, item.id))
+        event.id
+        for event in sorted(selected_events, key=lambda item: (item.timestamp_seconds, item.id))
     ]
     filename = f"match-{match_id}-events-{len(ordered_event_ids)}.mp4"
     clip_export = clip_exports.create_clip_export(

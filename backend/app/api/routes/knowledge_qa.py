@@ -14,7 +14,6 @@ from app.services.knowledge_rag import (
     rank_chunks,
 )
 
-
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge question answering"])
 
 

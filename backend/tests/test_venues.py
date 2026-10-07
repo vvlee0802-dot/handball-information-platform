@@ -1,6 +1,5 @@
 from fastapi.testclient import TestClient
 
-
 VENUE_DATA = {
     "name": "国家体育馆",
     "city": "北京",

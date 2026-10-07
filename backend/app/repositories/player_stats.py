@@ -9,7 +9,6 @@ from app.models.team import Team
 from app.repositories import match_report as match_reports
 from app.schemas.player_stats import MatchPlayerStatsRead, PlayerMatchStatsRead, PlayerStatsMetric
 
-
 METRIC_EVENT_TYPES: dict[PlayerStatsMetric, tuple[str, ...]] = {
     "goals": ("goal",),
     "shots": ("goal", "shot"),

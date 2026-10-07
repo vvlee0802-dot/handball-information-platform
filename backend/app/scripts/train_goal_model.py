@@ -1,9 +1,9 @@
 import argparse
-from datetime import UTC, datetime
 import json
-from pathlib import Path
 import random
 import re
+from datetime import UTC, datetime
+from pathlib import Path
 
 from app.services.goal_training import (
     GoalTrainingError,
@@ -11,7 +11,6 @@ from app.services.goal_training import (
     load_training_samples,
     manifest_sha256,
 )
-
 
 DEFAULT_CHECKPOINT = "MCG-NJU/videomae-small-finetuned-kinetics"
 DEFAULT_MODEL_VERSION = "goal-detector-v1"
@@ -21,9 +20,7 @@ SEED = 42
 
 def default_output_dir(model_version: str) -> Path:
     if not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", model_version):
-        raise argparse.ArgumentTypeError(
-            "模型版本只能包含小写字母、数字、点、下划线和连字符。"
-        )
+        raise argparse.ArgumentTypeError("模型版本只能包含小写字母、数字、点、下划线和连字符。")
     directory_name = model_version.removeprefix("goal-detector-")
     return Path("model_artifacts") / "goal_detector" / directory_name
 
@@ -170,7 +167,9 @@ def train_classifier(payload, epochs: int, learning_rate: float):
         if float(metrics["f1"]) > best_f1:
             best_f1 = float(metrics["f1"])
             best_epoch = epoch
-            best_state = {key: value.detach().clone() for key, value in classifier.state_dict().items()}
+            best_state = {
+                key: value.detach().clone() for key, value in classifier.state_dict().items()
+            }
         if epoch == 1 or epoch % 50 == 0 or epoch == epochs:
             print(
                 f"Epoch {epoch:03d}/{epochs}: loss={loss.item():.4f}, "

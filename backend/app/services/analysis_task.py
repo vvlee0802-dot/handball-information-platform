@@ -1,6 +1,6 @@
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
-import subprocess
 from typing import Callable
 
 from sqlalchemy.engine import Engine

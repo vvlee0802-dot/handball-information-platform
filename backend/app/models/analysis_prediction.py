@@ -8,9 +8,7 @@ from app.db.base import Base
 
 class AnalysisPrediction(Base):
     __tablename__ = "analysis_predictions"
-    __table_args__ = (
-        Index("ix_analysis_predictions_task_outcome", "analysis_task_id", "outcome"),
-    )
+    __table_args__ = (Index("ix_analysis_predictions_task_outcome", "analysis_task_id", "outcome"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     analysis_task_id: Mapped[str] = mapped_column(

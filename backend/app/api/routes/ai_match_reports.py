@@ -12,13 +12,13 @@ from app.models.ai_match_report import AiMatchReport, AiReportEvaluation
 from app.repositories import ai_match_report as ai_reports
 from app.repositories import match as matches
 from app.schemas.ai_match_report import (
-    AiMatchReportRead,
     AiMatchReportGenerate,
+    AiMatchReportRead,
     AiMatchReportUpdate,
     AiReportContent,
-    AiReportEvidenceBundle,
     AiReportEvaluationCheck,
     AiReportEvaluationRead,
+    AiReportEvidenceBundle,
     ReportEvidence,
 )
 from app.services.ai_match_report import (
@@ -28,14 +28,11 @@ from app.services.ai_match_report import (
     generate_report,
 )
 
-
 router = APIRouter(prefix="/api/matches/{match_id}/ai-reports", tags=["ai-match-reports"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
-def _evaluation_read(
-    db: Session, evaluation: AiReportEvaluation
-) -> AiReportEvaluationRead:
+def _evaluation_read(db: Session, evaluation: AiReportEvaluation) -> AiReportEvaluationRead:
     previous = ai_reports.previous_report_evaluation(
         db,
         match_id=evaluation.match_id,

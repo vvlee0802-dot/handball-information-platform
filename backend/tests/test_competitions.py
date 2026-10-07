@@ -1,6 +1,5 @@
 from fastapi.testclient import TestClient
 
-
 COMPETITION_DATA = {
     "name": "全国大学生手球锦标赛",
     "season": "2026",

@@ -6,9 +6,9 @@ Revises: f2c4a8d9e710
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "7e3b1a9c5d20"
 down_revision: Union[str, Sequence[str], None] = "f2c4a8d9e710"
@@ -37,23 +37,17 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["match_id"], ["matches.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(
-            ["created_by_user_id"], ["users.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["created_by_user_id"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("storage_key"),
     )
-    op.create_index(
-        op.f("ix_clip_exports_match_id"), "clip_exports", ["match_id"], unique=False
-    )
+    op.create_index(op.f("ix_clip_exports_match_id"), "clip_exports", ["match_id"], unique=False)
     op.create_table(
         "clip_export_events",
         sa.Column("clip_export_id", sa.Integer(), nullable=False),
         sa.Column("event_id", sa.Integer(), nullable=False),
         sa.Column("sequence", sa.Integer(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["clip_export_id"], ["clip_exports.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["clip_export_id"], ["clip_exports.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["event_id"], ["events.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("clip_export_id", "event_id"),
     )

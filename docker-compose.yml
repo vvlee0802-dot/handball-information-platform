@@ -38,13 +38,14 @@ services:
       dockerfile: backend/Dockerfile
     container_name: handball-backend
     restart: unless-stopped
-    env_file: .env
+    env_file: ${APP_ENV_FILE:-.env}
     environment:
       APP_ENV: ${APP_ENV:-development}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       REDIS_URL: redis://redis:6379/0
       TASK_QUEUE_MODE: rq
+      ALLOWED_HOSTS: "${ALLOWED_HOSTS:-localhost,127.0.0.1,testserver},backend"
       VIDEO_UPLOAD_DIR: /data/videos
       MATCH_REPORT_DIR: /data/match_reports
       KNOWLEDGE_DOCUMENT_DIR: /data/knowledge
@@ -70,8 +71,8 @@ services:
       dockerfile: backend/Dockerfile
     container_name: handball-worker
     restart: unless-stopped
-    command: ["python", "-m", "rq", "worker", "handball", "--url", "redis://redis:6379/0"]
-    env_file: .env
+    command: ["rq", "worker", "handball", "--url", "redis://redis:6379/0"]
+    env_file: ${APP_ENV_FILE:-.env}
     environment:
       APP_ENV: ${APP_ENV:-development}
       POSTGRES_HOST: postgres
@@ -103,7 +104,7 @@ services:
     container_name: handball-frontend
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-8080}:80"
+      - "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-8080}:80"
     depends_on:
       backend:
         condition: service_healthy
@@ -113,7 +114,51 @@ services:
       timeout: 3s
       retries: 5
 
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: handball-prometheus
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - handball_prometheus_data:/prometheus
+    depends_on:
+      backend:
+        condition: service_healthy
+      alertmanager:
+        condition: service_started
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    container_name: handball-alertmanager
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
+    ports:
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./ops/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - handball_alertmanager_data:/alertmanager
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: handball-blackbox
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    volumes:
+      - ./ops/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+
 volumes:
   handball_postgres_data:
   handball_redis_data:
   handball_media_data:
+  handball_prometheus_data:
+  handball_alertmanager_data:

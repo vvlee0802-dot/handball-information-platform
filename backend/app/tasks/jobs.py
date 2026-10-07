@@ -9,7 +9,6 @@ from app.services.analysis_task import process_analysis_task
 from app.services.clip_export import process_clip_export
 from app.services.video_processing import process_video
 
-
 logger = logging.getLogger("handball.worker")
 
 

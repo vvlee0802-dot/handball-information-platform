@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.api.routes import analysis_tasks as analysis_task_routes
@@ -221,9 +221,7 @@ def test_complete_manual_goals_trigger_evaluation_without_duplicate_events(
         "true_positive",
         "true_positive",
     ]
-    false_positive = next(
-        item for item in details.json() if item["outcome"] == "false_positive"
-    )
+    false_positive = next(item for item in details.json() if item["outcome"] == "false_positive")
     reviewed = client.post(
         f"/api/analysis-predictions/{false_positive['id']}/review",
         json={"decision": "include"},

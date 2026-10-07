@@ -1,7 +1,7 @@
-from datetime import UTC, datetime
-from pathlib import Path
 import shutil
 import subprocess
+from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -12,7 +12,6 @@ from app.core.config import settings
 from app.models.clip_export import ClipExport, ClipExportEvent
 from app.models.event import Event
 from app.models.video import Video
-
 
 EVENT_LEAD_SECONDS = 8.0
 EVENT_TRAIL_SECONDS = 5.0
@@ -165,9 +164,7 @@ def process_clip_export(clip_export_id: int, bind: Engine) -> None:
                 source_path = settings.video_storage_path / video.storage_key
                 if not source_path.is_file():
                     raise ClipExportError("事件关联的视频文件不存在。")
-                start, end = calculate_clip_bounds(
-                    event.timestamp_seconds, video.duration_seconds
-                )
+                start, end = calculate_clip_bounds(event.timestamp_seconds, video.duration_seconds)
                 segment_path = work_dir / f"segment-{index:03d}.mp4"
                 render_segment(source_path, segment_path, start, end)
                 segment_paths.append(segment_path)

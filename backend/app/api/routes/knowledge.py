@@ -11,8 +11,8 @@ from app.api.dependencies.auth import DatabaseSession, ManageKnowledgeBaseUser
 from app.core.authorization import UserRole
 from app.core.config import settings
 from app.models.knowledge import KnowledgeDocument
-from app.models.user import User
 from app.models.team import Team
+from app.models.user import User
 from app.repositories import knowledge as knowledge_documents
 from app.schemas.knowledge import KnowledgeDocumentDetail, KnowledgeDocumentRead
 from app.services.knowledge_document import (
@@ -21,7 +21,6 @@ from app.services.knowledge_document import (
     build_chunks,
     extract_document_pages,
 )
-
 
 router = APIRouter(prefix="/api/knowledge/documents", tags=["knowledge base"])
 SUPPORTED_SUFFIXES = {".pdf", ".txt", ".md"}
@@ -75,7 +74,9 @@ def _get_allowed_document(
         )
     )
     if not can_read:
-        raise HTTPException(status_code=403, detail="You do not have access to this knowledge document")
+        raise HTTPException(
+            status_code=403, detail="You do not have access to this knowledge document"
+        )
     return document
 
 

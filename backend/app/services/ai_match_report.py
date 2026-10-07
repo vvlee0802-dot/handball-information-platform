@@ -7,8 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.event import Event
 from app.models.ai_match_report import AiMatchReport
+from app.models.event import Event
 from app.models.match import Match
 from app.models.player import Player
 from app.models.team import Team
@@ -26,7 +26,9 @@ class MatchReportGenerationError(RuntimeError):
     pass
 
 
-def build_evidence_bundle(db: Session, match: Match) -> tuple[dict, list[ReportEvidence], list[str]]:
+def build_evidence_bundle(
+    db: Session, match: Match
+) -> tuple[dict, list[ReportEvidence], list[str]]:
     teams = {
         team.id: team
         for team in db.scalars(
@@ -45,10 +47,7 @@ def build_evidence_bundle(db: Session, match: Match) -> tuple[dict, list[ReportE
             id="match.metadata",
             category="match",
             label="比赛基本信息",
-            value=(
-                f"{match.match_date.isoformat()}，{match.stage}，"
-                f"{home.name} vs {away.name}"
-            ),
+            value=(f"{match.match_date.isoformat()}，{match.stage}，{home.name} vs {away.name}"),
         )
     )
     if match.home_score is not None and match.away_score is not None:
@@ -223,10 +222,7 @@ def generate_report(
 
 
 def _number_tokens(text: str) -> set[str]:
-    return {
-        token.lstrip("0") or "0"
-        for token in re.findall(r"(?<![A-Za-z])\d+(?:\.\d+)?", text)
-    }
+    return {token.lstrip("0") or "0" for token in re.findall(r"(?<![A-Za-z])\d+(?:\.\d+)?", text)}
 
 
 def _evidence_text(evidence: ReportEvidence) -> str:
@@ -256,12 +252,12 @@ def evaluate_report(
 
     cited_ids = list(
         dict.fromkeys(
-            evidence_id
-            for section in content.sections
-            for evidence_id in section.evidence_ids
+            evidence_id for section in content.sections for evidence_id in section.evidence_ids
         )
     )
-    unknown_ids = [item for item in cited_ids if item not in stored_by_id or item not in current_by_id]
+    unknown_ids = [
+        item for item in cited_ids if item not in stored_by_id or item not in current_by_id
+    ]
     checks.append(
         AiReportEvaluationCheck(
             key="evidence_traceability",

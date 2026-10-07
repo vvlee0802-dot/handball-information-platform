@@ -3,9 +3,9 @@ from datetime import datetime, timezone
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
-from app.models.video import Video
-from app.models.event import Event
 from app.models.analysis_task import AnalysisTask
+from app.models.event import Event
+from app.models.video import Video
 
 
 def list_match_videos(db: Session, match_id: int) -> list[Video]:
@@ -75,11 +75,7 @@ def soft_delete_video(db: Session, video: Video) -> Video:
 
 def has_events(db: Session, video_id: int) -> bool:
     return bool(
-        db.scalar(
-            select(
-                exists().where(Event.video_id == video_id, Event.deleted_at.is_(None))
-            )
-        )
+        db.scalar(select(exists().where(Event.video_id == video_id, Event.deleted_at.is_(None))))
     )
 
 

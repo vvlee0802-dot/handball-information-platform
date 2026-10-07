@@ -285,9 +285,12 @@ def test_athlete_cannot_modify_delete_or_verify_event(client: TestClient) -> Non
     ).json()["id"]
     replace_login(client, email="permission-athlete@example.com", role=UserRole.ATHLETE)
 
-    assert client.patch(
-        f"/api/matches/{match_id}/events/{event_id}", json={"note": "越权修改"}
-    ).status_code == 403
+    assert (
+        client.patch(
+            f"/api/matches/{match_id}/events/{event_id}", json={"note": "越权修改"}
+        ).status_code
+        == 403
+    )
     assert client.delete(f"/api/matches/{match_id}/events/{event_id}").status_code == 403
     assert client.post(f"/api/matches/{match_id}/events/{event_id}/verify").status_code == 403
 

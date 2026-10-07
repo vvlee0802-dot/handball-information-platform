@@ -6,9 +6,9 @@ Revises: f3a8d1e6c240
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "a2c5e8f1b430"
 down_revision: Union[str, Sequence[str], None] = "f3a8d1e6c240"
@@ -19,7 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column(
         "clip_exports",
-        sa.Column("export_type", sa.String(length=30), server_default="event_clips", nullable=False),
+        sa.Column(
+            "export_type", sa.String(length=30), server_default="event_clips", nullable=False
+        ),
     )
     op.add_column("clip_exports", sa.Column("player_id", sa.Integer(), nullable=True))
     op.add_column("clip_exports", sa.Column("event_types", sa.String(length=255), nullable=True))
@@ -44,7 +46,12 @@ def upgrade() -> None:
         sa.Column("new_player_name", sa.String(length=120), nullable=False),
         sa.Column("changed_by_user_id", sa.Integer(), nullable=False),
         sa.Column("changed_by_user_name", sa.String(length=120), nullable=False),
-        sa.Column("changed_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "changed_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["event_id"], ["events.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["match_id"], ["matches.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["changed_by_user_id"], ["users.id"], ondelete="RESTRICT"),
@@ -65,8 +72,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_event_player_assignment_audits_event_id", table_name="event_player_assignment_audits")
-    op.drop_index("ix_event_player_assignment_audits_match_id", table_name="event_player_assignment_audits")
+    op.drop_index(
+        "ix_event_player_assignment_audits_event_id", table_name="event_player_assignment_audits"
+    )
+    op.drop_index(
+        "ix_event_player_assignment_audits_match_id", table_name="event_player_assignment_audits"
+    )
     op.drop_table("event_player_assignment_audits")
     op.drop_constraint("fk_clip_exports_player_id_players", "clip_exports", type_="foreignkey")
     op.drop_index("ix_clip_exports_player_id", table_name="clip_exports")

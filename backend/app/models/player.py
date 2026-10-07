@@ -8,9 +8,7 @@ from app.db.base import Base
 
 class Player(Base):
     __tablename__ = "players"
-    __table_args__ = (
-        UniqueConstraint("team_id", "number", name="uq_players_team_number"),
-    )
+    __table_args__ = (UniqueConstraint("team_id", "number", name="uq_players_team_number"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)

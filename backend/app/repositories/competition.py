@@ -40,9 +40,7 @@ def update_competition(
 
 
 def has_matches(db: Session, competition_id: int) -> bool:
-    return bool(
-        db.scalar(select(exists().where(Match.competition_id == competition_id)))
-    )
+    return bool(db.scalar(select(exists().where(Match.competition_id == competition_id))))
 
 
 def delete_competition(db: Session, competition: Competition) -> None:

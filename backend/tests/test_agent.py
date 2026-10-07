@@ -94,7 +94,9 @@ def answer_response(content: str) -> dict:
     }
 
 
-def configure_fake_model(monkeypatch, bodies: list[dict], captured: list[dict] | None = None) -> None:
+def configure_fake_model(
+    monkeypatch, bodies: list[dict], captured: list[dict] | None = None
+) -> None:
     monkeypatch.setattr(settings, "match_report_llm_base_url", "https://model.test/v1")
     monkeypatch.setattr(settings, "match_report_llm_api_key", "test-key")
     monkeypatch.setattr(settings, "match_report_llm_model", "test-agent")
@@ -187,9 +189,9 @@ def test_agent_denies_tool_outside_user_allowlist_and_does_not_fabricate(
             "/api/auth/login",
             json={"email": "coach-agent@example.com", "password": "correct-password"},
         )
-        session_id = coach_client.post(
-            "/api/agent/sessions", json={"match_id": match.id}
-        ).json()["session"]["id"]
+        session_id = coach_client.post("/api/agent/sessions", json={"match_id": match.id}).json()[
+            "session"
+        ]["id"]
         response = coach_client.post(
             f"/api/agent/sessions/{session_id}/messages",
             json={"content": "取消这场比赛"},
@@ -218,9 +220,9 @@ def test_agent_write_requires_confirmation_and_creates_audit(
             answer_response("已经生成待确认计划，确认前不会修改比赛。"),
         ],
     )
-    session_id = client.post(
-        "/api/agent/sessions", json={"match_id": match.id}
-    ).json()["session"]["id"]
+    session_id = client.post("/api/agent/sessions", json={"match_id": match.id}).json()["session"][
+        "id"
+    ]
     turn = client.post(
         f"/api/agent/sessions/{session_id}/messages",
         json={"content": "把比赛状态改为取消"},
@@ -244,9 +246,9 @@ def test_deleting_session_removes_messages_and_short_term_memory(
 ) -> None:
     match = seed_match()
     configure_fake_model(monkeypatch, [answer_response("请告诉我想了解的比赛问题。")])
-    session_id = client.post(
-        "/api/agent/sessions", json={"match_id": match.id}
-    ).json()["session"]["id"]
+    session_id = client.post("/api/agent/sessions", json={"match_id": match.id}).json()["session"][
+        "id"
+    ]
     client.post(
         f"/api/agent/sessions/{session_id}/messages",
         json={"content": "你好"},

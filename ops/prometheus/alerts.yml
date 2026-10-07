@@ -1,0 +1,91 @@
+groups:
+  - name: handball-platform
+    rules:
+      - alert: HandballApiMetricsUnavailable
+        expr: up{job="handball-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Handball API metrics are unavailable
+          description: Prometheus cannot scrape the backend metrics endpoint for two minutes.
+
+      - alert: HandballServiceProbeFailed
+        expr: probe_success{job=~"handball-(api|frontend)-probe"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Handball service health probe failed
+          description: "{{ $labels.instance }} has failed its HTTP health probe."
+
+      - alert: HandballDependencyUnavailable
+        expr: handball_dependency_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: A Handball platform dependency is unavailable
+          description: "Dependency {{ $labels.dependency }} has been unavailable for two minutes."
+
+      - alert: HandballHighServerErrorRate
+        expr: |
+          sum(rate(handball_http_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(handball_http_requests_total[5m])), 0.001)
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Handball API server error rate is above five percent
+          description: More than five percent of API requests failed during the last five minutes.
+
+      - alert: HandballSlowApiP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(handball_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Handball API p95 latency is above two seconds
+          description: The p95 request latency has remained above two seconds for ten minutes.
+
+      - alert: HandballQueueHasNoWorker
+        expr: handball_rq_queue_depth > 0 and handball_rq_workers < 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Handball background queue has no healthy worker
+          description: Jobs are waiting but no RQ worker is idle or busy.
+
+      - alert: HandballQueueBacklog
+        expr: handball_rq_queue_depth > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Handball background queue backlog is growing
+          description: More than twenty jobs have waited for ten minutes.
+
+      - alert: HandballBackgroundJobFailed
+        expr: handball_rq_failed_jobs > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Handball background jobs have failed
+          description: Review the RQ failed-job registry and worker logs.
+
+      - alert: HandballPersistedTaskFailed
+        expr: sum(handball_task_records{status=~"failed|error"}) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: A persisted Handball task is in a failed state
+          description: Review the task type, API logs, and the associated model or provider.

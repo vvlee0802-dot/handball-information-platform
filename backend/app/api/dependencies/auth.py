@@ -3,12 +3,11 @@ from typing import Annotated
 from fastapi import Cookie, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.authorization import Permission, has_permission
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories import auth as auth_repository
-
 
 DatabaseSession = Annotated[Session, Depends(get_db)]
 

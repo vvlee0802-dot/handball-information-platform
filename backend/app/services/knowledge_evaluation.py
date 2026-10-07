@@ -41,9 +41,8 @@ def run_rag_evaluation(
         cited_ids = [citation.document_id for citation in answer.citations]
         case_citation_hits = sum(document_id in expected_ids for document_id in cited_ids)
         case_citation_rate = case_citation_hits / len(cited_ids) if cited_ids else 0.0
-        ungrounded = (
-            not answer.insufficient_evidence
-            and (not cited_ids or any(document_id not in expected_ids for document_id in cited_ids))
+        ungrounded = not answer.insufficient_evidence and (
+            not cited_ids or any(document_id not in expected_ids for document_id in cited_ids)
         )
 
         recall_total += recall

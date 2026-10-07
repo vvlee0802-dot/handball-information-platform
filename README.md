@@ -1,6 +1,6 @@
 # Handball Information Platform
 
-手球信息与比赛分析平台。目前已完成 Epic 1 至 Epic 9；工程化上线（Epic 10）仍待开发。
+手球信息与比赛分析平台。目前已完成 Epic 1 至 Epic 10，包含可复现开发环境、自动化质量门禁、运行监控、安全部署和备份恢复流程。
 
 用户可以通过赛事、比赛、球队、球员或场馆查找信息。主要页面的数据由 FastAPI 从 PostgreSQL 读取；具备权限的教练或分析师可以上传 MP4 录像、标注并确认比赛事件，再生成可预览和下载的视频片段。AI 已能生成可审核的进球候选，跨比赛泛化与更多事件类型仍属于后续开发范围。
 
@@ -12,7 +12,7 @@
 | Epic 5 | 功能闭环已完成 | 进球候选、人工复核、评估与困难负样本回流已实现；跨比赛准确率优化暂缓 |
 | Epic 6–7 | 已完成 | 官方统计、进球事件流程、个人集锦与 AI 赛后报告 |
 | Epic 8–9 | 已完成 | 带引用的 RAG 知识库与具备工具调用、审计能力的比赛分析 Agent |
-| Epic 10 | 工程基础已完成 | 容器化、任务队列、安全配置、日志和健康检查已实现；CI、生产监控与正式部署待验收 |
+| Epic 10 | 已完成 | 容器化、CI、任务队列、健康检查、指标告警、HTTPS 部署和备份恢复演练均已实现 |
 
 当前策略是先完成产品闭环与界面优化，再使用第二场完整标注比赛继续验证和提升进球识别准确率。AI 候选在人工确认前始终不进入正式统计。
 
@@ -25,6 +25,17 @@
 5. 除首页外的页面统一使用深色星空背景、半透明面板、深色表单和蓝色强调色，使列表、详情、知识库与 Agent 保持一致。
 6. 增加前后端 Docker 镜像、Nginx 网关、Redis/RQ 工作队列、存活与就绪检查、请求追踪、结构化日志和生产安全配置校验。
 7. 更新项目说明与 v1.1 需求文档，并增加“新增比赛”弹窗的组件回归测试。
+
+## Epic 10 工程交付
+
+1. 使用 `make dev-up` 统一构建并启动 PostgreSQL、Redis、FastAPI、RQ Worker 和前端；`make seed-demo` 可幂等导入赛事、球队、球员、场馆和比赛示例数据。
+2. GitHub Actions 对前端执行 ESLint、类型检查、54 项单元测试和生产构建，对后端执行 Ruff 格式与静态检查、Alembic 升级与模型差异检查、98 项 API/服务测试，并验证前后端容器镜像与生产 Compose 配置。
+3. `/internal/metrics` 提供 Prometheus 指标，覆盖 API 请求量、状态码、延迟、数据库、Redis、RQ Worker、队列积压，以及视频分析、集锦、AI 报告、知识文档和 Agent 任务状态。
+4. 可选的 `monitoring` profile 启动 Prometheus、Alertmanager 和 Blackbox Exporter，包含服务不可用、依赖故障、高 5xx、慢请求、队列积压、Worker 缺失和失败任务告警。
+5. 生产 Compose 使用 Caddy 自动申请和续期 HTTPS 证书，FastAPI 强制安全 Cookie、可信主机、HTTPS 来源和非默认数据库密码。
+6. `backup.sh` 同时备份 PostgreSQL 与媒体目录；`restore-check.sh` 仅恢复到隔离验证数据库并记录表数量和 Alembic 版本，不覆盖生产库。
+
+完整上线步骤见 [部署与恢复手册](docs/deployment.md)。
 
 ## US2.1 本版改动
 
@@ -262,7 +273,7 @@ python -m app.scripts.compare_goal_models \
 
 ## 需求文档
 
-当前正式需求文档为 [Handball AI Project Requirements v1.1](docs/Handball_AI_Project_Requirements_v1.1.docx)。v1.0 继续保留为历史基线，v1.1 汇总了 Epic 1–9 的实际交付内容、当前实现边界和 Epic 10 待办。
+当前正式需求文档为 [Handball AI Project Requirements v1.2](docs/Handball_AI_Project_Requirements_v1.2.docx)。v1.0 和 v1.1 继续保留为历史基线，v1.2 记录 Epic 1–10 的实际交付状态和工程验收依据。
 
 ## 已实现功能
 
@@ -322,20 +333,31 @@ python -m app.scripts.compare_goal_models \
 ├── frontend/                 # Vue 3 + TypeScript 前端应用
 ├── backend/                  # FastAPI 后端、Alembic 迁移和测试
 ├── docs/                     # 正式需求文档
-├── docker-compose.yml        # PostgreSQL 本地环境
+├── ops/                      # Caddy、Prometheus、Alertmanager 和 Blackbox 配置
+├── scripts/                  # 部署、健康检查、备份和恢复演练脚本
+├── .github/workflows/        # GitHub Actions 质量门禁
+├── docker-compose.yml        # 开发和监控服务编排
+├── docker-compose.prod.yml   # HTTPS 生产部署覆盖配置
+├── Makefile                  # 统一开发、测试和运维命令
 └── README.md
 ```
 
 ## 本地运行
 
-### 1. 配置环境变量并启动 PostgreSQL
+### 1. 使用统一命令启动完整环境
 
 ```bash
 cp .env.example .env
-docker compose up -d
+make dev-up
+make health
+make seed-demo
 ```
 
-### 2. 启动后端
+浏览器访问 `http://127.0.0.1:8080`。`make dev-up` 会启动数据库、Redis、后端、Worker 和前端；`make health` 验证全部核心服务，`make seed-demo` 可重复执行且不会生成重复示例数据。
+
+仅开发某一层时，也可以按下面步骤手动启动后端和前端。
+
+### 2. 手动启动后端
 
 ```bash
 cd backend
@@ -353,7 +375,7 @@ python -m uvicorn app.main:app --reload --port 8000
 
 API 文档：`http://127.0.0.1:8000/docs`
 
-### 3. 启动前端
+### 3. 手动启动前端
 
 ```bash
 cd frontend
@@ -378,6 +400,14 @@ KNOWLEDGE_EMBEDDING_MODEL=text-embedding-v4
 
 ## 项目检查
 
+完整检查可以统一执行：
+
+```bash
+make test
+```
+
+也可以分别执行：
+
 ```bash
 cd frontend
 npm run type-check
@@ -395,9 +425,12 @@ python -m pytest -q
 ```text
 ESLint                         Passed
 TypeScript type-check          Passed
-Frontend unit tests            53 passed
-Backend tests                  94 passed
+Frontend unit tests            54 passed
+Backend tests                  98 passed
 Production build               Passed
+Ruff format and static checks  Passed
+Alembic migration check        Passed
+Compose configuration          Passed
 ```
 
 ## 开发路线
@@ -494,13 +527,16 @@ Production build               Passed
 - [x] 存活检查、就绪检查、请求追踪和结构化日志
 - [x] CORS、可信主机、HTTPS、Cookie 与生产环境配置校验
 - [x] 后台任务支持进程内模式与 Redis/RQ 模式
-- [ ] CI 流水线、生产监控告警和正式部署验收
+- [x] GitHub Actions 前后端质量门禁、迁移检查和容器构建
+- [x] Prometheus 指标、Blackbox 探针与 Alertmanager 告警规则
+- [x] Caddy 自动 HTTPS、生产 Compose 和发布冒烟检查
+- [x] PostgreSQL 与媒体备份、隔离数据库恢复演练和结果记录
 
 ## 当前范围说明
 
 当前版本已经支持在比赛详情页分片上传 MP4 录像、恢复中断上传、管理多条视频记录，并从已确认事件生成可预览和下载的 MP4 片段。
 
-当前 MVP 的视频本体、临时分片、导出片段和知识库原文件保存在本地可配置目录；开发环境可使用 FastAPI 进程内任务，容器环境默认使用 Redis/RQ Worker；知识向量保存在 PostgreSQL JSON 字段中，并由应用层计算余弦相似度。云端对象存储、pgvector、更多 AI 事件类型、CI/CD 和生产监控告警属于后续优化范围。
+当前 MVP 的视频本体、临时分片、导出片段和知识库原文件保存在 Docker 持久卷或本地可配置目录；开发环境可使用 FastAPI 进程内任务，容器环境默认使用 Redis/RQ Worker；知识向量保存在 PostgreSQL JSON 字段中，并由应用层计算余弦相似度。云端对象存储、pgvector、更多 AI 事件类型和多节点高可用部署属于后续优化范围。
 
 本项目当前的 AI 功能包括：本地 VideoMAE 进球候选器、百炼 Qwen 赛后报告、Embedding + Qwen 的知识库问答，以及调用受控业务工具的比赛分析 Agent。进球识别仍定位为“AI 初筛 + 人工确认”，不承诺无人复核的正式统计准确性。
 

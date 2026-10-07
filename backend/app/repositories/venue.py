@@ -1,8 +1,8 @@
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
-from app.models.venue import Venue
 from app.models.match import Match
+from app.models.venue import Venue
 from app.schemas.venue import VenueCreate, VenueUpdate
 
 

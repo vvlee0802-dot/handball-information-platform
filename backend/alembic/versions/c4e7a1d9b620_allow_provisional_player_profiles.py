@@ -6,9 +6,9 @@ Revises: b7d4e9a1c260
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "c4e7a1d9b620"
 down_revision: Union[str, Sequence[str], None] = "b7d4e9a1c260"
@@ -32,12 +32,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "UPDATE players SET position = '待完善' WHERE position IS NULL"
-    )
-    op.execute(
-        "UPDATE players SET birth_date = DATE '1900-01-01' WHERE birth_date IS NULL"
-    )
+    op.execute("UPDATE players SET position = '待完善' WHERE position IS NULL")
+    op.execute("UPDATE players SET birth_date = DATE '1900-01-01' WHERE birth_date IS NULL")
     op.alter_column(
         "players",
         "birth_date",

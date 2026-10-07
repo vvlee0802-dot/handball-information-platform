@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from app.scripts.train_goal_model import default_output_dir
 from app.scripts.compare_goal_models import evaluate_model
+from app.scripts.train_goal_model import default_output_dir
 from app.services.goal_training import (
     GoalTrainingError,
     binary_metrics,
@@ -96,10 +96,7 @@ def test_load_training_samples_rejects_inconsistent_label(tmp_path):
     clip.parent.mkdir(parents=True)
     clip.write_bytes(b"video")
     manifest.write_text(
-        json.dumps(
-            {"sample_id": "bad", "split": "train", "label": "goal", "label_id": 0}
-        )
-        + "\n",
+        json.dumps({"sample_id": "bad", "split": "train", "label": "goal", "label_id": 0}) + "\n",
         encoding="utf-8",
     )
 

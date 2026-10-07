@@ -3,9 +3,12 @@
 Revision ID: 9b2e4d7f31c6
 Revises: 6a5f1c8d92b4
 """
+
 from typing import Sequence, Union
-from alembic import op
+
 import sqlalchemy as sa
+
+from alembic import op
 
 revision: str = "9b2e4d7f31c6"
 down_revision: Union[str, Sequence[str], None] = "6a5f1c8d92b4"
@@ -27,7 +30,12 @@ def upgrade() -> None:
         sa.Column("status", sa.String(20), server_default="scheduled", nullable=False),
         sa.Column("home_score", sa.Integer(), nullable=True),
         sa.Column("away_score", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["competition_id"], ["competitions.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["home_team_id"], ["teams.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["away_team_id"], ["teams.id"], ondelete="RESTRICT"),

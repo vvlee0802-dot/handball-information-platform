@@ -1,6 +1,5 @@
 from fastapi.testclient import TestClient
 
-
 TEAM_DATA = {
     "name": "中国男子手球队",
     "short_name": "中国",

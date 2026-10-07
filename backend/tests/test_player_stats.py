@@ -179,12 +179,8 @@ def test_metric_events_include_only_verified_matching_player_events(client: Test
     ).json()
     assert client.delete(f"/api/matches/{match_id}/events/{deleted['id']}").status_code == 204
 
-    shots = client.get(
-        f"/api/matches/{match_id}/player-stats/{player_id}/events?metric=shots"
-    )
-    goals = client.get(
-        f"/api/matches/{match_id}/player-stats/{player_id}/events?metric=goals"
-    )
+    shots = client.get(f"/api/matches/{match_id}/player-stats/{player_id}/events?metric=shots")
+    goals = client.get(f"/api/matches/{match_id}/player-stats/{player_id}/events?metric=goals")
 
     assert shots.status_code == 200
     assert [event["event_type"] for event in shots.json()] == ["shot", "goal"]

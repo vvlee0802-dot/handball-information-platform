@@ -3,7 +3,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-
 ReportFocus = Literal["full_match", "key_phases", "team_comparison", "player_performance"]
 ReportDetailLevel = Literal["concise", "detailed"]
 

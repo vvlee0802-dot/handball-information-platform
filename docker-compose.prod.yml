@@ -1,0 +1,38 @@
+services:
+  backend:
+    environment:
+      APP_ENV: production
+      SESSION_COOKIE_SECURE: "true"
+      FORCE_HTTPS: "true"
+      ALLOWED_HOSTS: ${APP_DOMAIN:?Set APP_DOMAIN in .env.production},backend
+      ALLOWED_ORIGINS: https://${APP_DOMAIN:?Set APP_DOMAIN in .env.production}
+
+  worker:
+    environment:
+      APP_ENV: production
+      SESSION_COOKIE_SECURE: "true"
+      FORCE_HTTPS: "true"
+      ALLOWED_HOSTS: ${APP_DOMAIN:?Set APP_DOMAIN in .env.production}
+      ALLOWED_ORIGINS: https://${APP_DOMAIN:?Set APP_DOMAIN in .env.production}
+
+  caddy:
+    image: caddy:2.9-alpine
+    container_name: handball-caddy
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env.production}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./ops/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - handball_caddy_data:/data
+      - handball_caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+
+volumes:
+  handball_caddy_data:
+  handball_caddy_config:

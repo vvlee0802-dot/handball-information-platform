@@ -148,7 +148,9 @@ No. Team A G YC 2' RC BC No. Team B G YC 2' RC BC
         def __exit__(self, *_args) -> None:
             return None
 
-    monkeypatch.setattr("app.services.match_report_parser.pdfplumber.open", lambda _stream: FakePdf())
+    monkeypatch.setattr(
+        "app.services.match_report_parser.pdfplumber.open", lambda _stream: FakePdf()
+    )
     parsed = parse_official_match_report_pdf(b"%PDF-1.7 fake")
     assert parsed["team_a"]["name"] == "Germany"
     assert parsed["team_b"]["name"] == "Denmark"
@@ -247,9 +249,7 @@ def test_preview_confirm_and_deduplicate_official_report(
     linked_event = client.get(f"/api/matches/{match_id}/events").json()[0]
     assert linked_event["team_id"] == germany_id
     assert linked_event["player_id"] == linked["player_id"]
-    audits = client.get(
-        f"/api/matches/{match_id}/player-stats/player-assignment/audits"
-    ).json()
+    audits = client.get(f"/api/matches/{match_id}/player-stats/player-assignment/audits").json()
     assert audits[0]["event_id"] == linked_event["id"]
     assert audits[0]["new_player_id"] == linked["player_id"]
 

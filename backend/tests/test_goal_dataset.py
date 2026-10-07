@@ -4,8 +4,8 @@ from app.services.goal_dataset import (
     GoalAnnotation,
     GoalDatasetError,
     HardNegativePrediction,
-    build_hard_negative_samples,
     build_goal_dataset_samples,
+    build_hard_negative_samples,
 )
 
 
@@ -50,7 +50,9 @@ def test_builds_balanced_time_split_goal_dataset() -> None:
     assert sum(sample.split == "train" and sample.label == "goal" for sample in samples) == 3
     assert sum(sample.split == "train" and sample.label == "non_goal" for sample in samples) == 3
     assert sum(sample.split == "validation" and sample.label == "goal" for sample in samples) == 1
-    assert sum(sample.split == "validation" and sample.label == "non_goal" for sample in samples) == 1
+    assert (
+        sum(sample.split == "validation" and sample.label == "non_goal" for sample in samples) == 1
+    )
     assert all(
         20
         <= min(

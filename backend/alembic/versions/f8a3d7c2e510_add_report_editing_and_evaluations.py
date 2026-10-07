@@ -6,9 +6,9 @@ Revises: e7c2a9f4b610
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "f8a3d7c2e510"
 down_revision: Union[str, Sequence[str], None] = "e7c2a9f4b610"
@@ -19,7 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column(
         "ai_match_reports",
-        sa.Column("generation_focus", sa.String(length=30), server_default="full_match", nullable=False),
+        sa.Column(
+            "generation_focus", sa.String(length=30), server_default="full_match", nullable=False
+        ),
     )
     op.add_column(
         "ai_match_reports",
@@ -27,10 +29,17 @@ def upgrade() -> None:
     )
     op.add_column("ai_match_reports", sa.Column("user_output_data", sa.JSON(), nullable=True))
     op.add_column("ai_match_reports", sa.Column("edited_by_user_id", sa.Integer(), nullable=True))
-    op.add_column("ai_match_reports", sa.Column("edited_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column(
+        "ai_match_reports", sa.Column("edited_at", sa.DateTime(timezone=True), nullable=True)
+    )
     op.add_column(
         "ai_match_reports",
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
     )
     op.create_foreign_key(
         "fk_ai_match_reports_edited_by_user_id_users",
@@ -56,7 +65,12 @@ def upgrade() -> None:
         sa.Column("passed", sa.Boolean(), nullable=False),
         sa.Column("score", sa.Float(), nullable=False),
         sa.Column("checks", sa.JSON(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["evaluated_by_user_id"], ["users.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["match_id"], ["matches.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["report_id"], ["ai_match_reports.id"], ondelete="CASCADE"),

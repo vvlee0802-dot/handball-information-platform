@@ -1,11 +1,11 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     DateTime,
     ForeignKey,
     Integer,
-    JSON,
     String,
     UniqueConstraint,
     func,
@@ -78,8 +78,12 @@ class OfficialPlayerMatchStat(Base):
     player_name: Mapped[str] = mapped_column(String(120), nullable=False)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     goals: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    yellow_cards: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    suspensions_2min: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    yellow_cards: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    suspensions_2min: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
     red_cards: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     blue_cards: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
@@ -103,7 +107,10 @@ class OfficialTeamMatchStat(Base):
     report_side: Mapped[str] = mapped_column(String(1), nullable=False)
     half_time_score: Mapped[int] = mapped_column(Integer, nullable=False)
     final_score: Mapped[int] = mapped_column(Integer, nullable=False)
-    seven_meter_goals: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    seven_meter_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    seven_meter_goals: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    seven_meter_attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
     timeouts: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
-

@@ -1,13 +1,12 @@
+import json
+import subprocess
 from collections import deque
 from dataclasses import dataclass
-import json
 from pathlib import Path
-import subprocess
 from typing import Callable
 
 from app.core.config import settings
 from app.services.clip_export import get_ffmpeg_executable
-
 
 SCAN_FPS = 2
 WINDOW_SECONDS = 13
@@ -20,10 +19,7 @@ DEFAULT_GOAL_THRESHOLD = 0.50
 
 
 def model_scan_filter() -> str:
-    return (
-        f"fps={SCAN_FPS},scale=-2:{MODEL_FRAME_SIZE},"
-        f"crop={MODEL_FRAME_SIZE}:{MODEL_FRAME_SIZE}"
-    )
+    return f"fps={SCAN_FPS},scale=-2:{MODEL_FRAME_SIZE},crop={MODEL_FRAME_SIZE}:{MODEL_FRAME_SIZE}"
 
 
 @dataclass(frozen=True)
@@ -183,7 +179,9 @@ def _scan_with_model(
                 on_progress(progress)
                 last_progress = progress
 
-    stderr = process.stderr.read().decode("utf-8", errors="replace").strip() if process.stderr else ""
+    stderr = (
+        process.stderr.read().decode("utf-8", errors="replace").strip() if process.stderr else ""
+    )
     return_code = process.wait()
     if return_code != 0:
         detail = stderr.splitlines()[-1] if stderr else "未知视频解码错误"

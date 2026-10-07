@@ -6,9 +6,9 @@ Revises: 7e3b1a9c5d20
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "a4f9c2e8d710"
 down_revision: Union[str, Sequence[str], None] = "7e3b1a9c5d20"
@@ -23,9 +23,7 @@ def upgrade() -> None:
         sa.Column("match_id", sa.Integer(), nullable=False),
         sa.Column("video_id", sa.Integer(), nullable=False),
         sa.Column("created_by_user_id", sa.Integer(), nullable=False),
-        sa.Column(
-            "task_type", sa.String(30), server_default="goal_detection", nullable=False
-        ),
+        sa.Column("task_type", sa.String(30), server_default="goal_detection", nullable=False),
         sa.Column("status", sa.String(20), server_default="queued", nullable=False),
         sa.Column("progress", sa.Integer(), server_default="0", nullable=False),
         sa.Column("stage", sa.String(50), server_default="queued", nullable=False),
@@ -46,9 +44,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["match_id"], ["matches.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["video_id"], ["videos.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(
-            ["created_by_user_id"], ["users.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["created_by_user_id"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(

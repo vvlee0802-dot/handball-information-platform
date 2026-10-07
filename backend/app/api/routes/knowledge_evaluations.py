@@ -13,7 +13,6 @@ from app.schemas.knowledge import (
 from app.services.knowledge_evaluation import run_rag_evaluation
 from app.services.knowledge_rag import KnowledgeRagError
 
-
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge evaluations"])
 
 
@@ -68,7 +67,9 @@ def create_evaluation_case(
         viewer_team_id=current_user.team_id,
         include_private_from_others=_is_admin(current_user.role),
     )
-    accessible_ids = {document.id for document in accessible_documents if document.status == "ready"}
+    accessible_ids = {
+        document.id for document in accessible_documents if document.status == "ready"
+    }
     requested_ids = list(dict.fromkeys(payload.expected_document_ids))
     if not set(requested_ids).issubset(accessible_ids):
         raise HTTPException(status_code=400, detail="预期来源中包含不存在或无权访问的文档。")

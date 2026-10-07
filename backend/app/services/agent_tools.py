@@ -139,7 +139,9 @@ def available_tool_schemas(user: User) -> list[dict]:
 def sanitize_arguments(value: Any) -> Any:
     if isinstance(value, dict):
         return {
-            key: "***" if any(term in key.lower() for term in ("key", "token", "password", "secret")) else sanitize_arguments(item)
+            key: "***"
+            if any(term in key.lower() for term in ("key", "token", "password", "secret"))
+            else sanitize_arguments(item)
             for key, item in value.items()
         }
     if isinstance(value, list):
@@ -180,7 +182,9 @@ def _match_overview(db: Session, args: MatchArgs) -> tuple[dict, list[AgentSourc
         "venue": venue.name if venue else None,
     }
     label = f"比赛 #{match.id}：{home.name if home else '主队'} vs {away.name if away else '客队'}"
-    return result, [AgentSource(id=f"match:{match.id}", source_type="match", label=label, match_id=match.id)]
+    return result, [
+        AgentSource(id=f"match:{match.id}", source_type="match", label=label, match_id=match.id)
+    ]
 
 
 def _match_events(db: Session, args: EventArgs) -> tuple[dict, list[AgentSource]]:
@@ -199,8 +203,19 @@ def _match_events(db: Session, args: EventArgs) -> tuple[dict, list[AgentSource]
     events = list(db.scalars(statement.order_by(Event.timestamp_seconds, Event.id).limit(100)))
     team_ids = {event.team_id for event in events if event.team_id is not None}
     player_ids = {event.player_id for event in events if event.player_id is not None}
-    teams = {team.id: team for team in db.scalars(select(Team).where(Team.id.in_(team_ids)))} if team_ids else {}
-    players = {player.id: player for player in db.scalars(select(Player).where(Player.id.in_(player_ids)))} if player_ids else {}
+    teams = (
+        {team.id: team for team in db.scalars(select(Team).where(Team.id.in_(team_ids)))}
+        if team_ids
+        else {}
+    )
+    players = (
+        {
+            player.id: player
+            for player in db.scalars(select(Player).where(Player.id.in_(player_ids)))
+        }
+        if player_ids
+        else {}
+    )
     rows = [
         {
             "event_id": event.id,
@@ -296,7 +311,7 @@ def _knowledge(db: Session, args: KnowledgeArgs, user: User) -> tuple[dict, list
             AgentSource(
                 id=f"knowledge:{chunk.id}",
                 source_type="knowledge",
-                label=f"{document.original_filename} · {chunk.section_title or ('第 '+str(chunk.page_number)+' 页' if chunk.page_number else '文本分块')}",
+                label=f"{document.original_filename} · {chunk.section_title or ('第 ' + str(chunk.page_number) + ' 页' if chunk.page_number else '文本分块')}",
                 document_id=document.id,
                 excerpt=chunk.content[:500],
             )

@@ -8,7 +8,6 @@ from app.db.session import get_db
 from app.repositories import venue as venue_repository
 from app.schemas.venue import VenueCreate, VenueRead, VenueUpdate
 
-
 router = APIRouter(prefix="/api/venues", tags=["venues"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
